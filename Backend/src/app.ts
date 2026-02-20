@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth.routes";
+import documentRouter from "./routes/document.routes";
 
 const app = express();
 app.use(
@@ -21,5 +22,6 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/documents", documentRouter);
 
 export default app;
