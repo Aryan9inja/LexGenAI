@@ -1,8 +1,10 @@
 import dotenv from "dotenv";
+import path from "path";
 import app from "./app";
 import { connectDB } from "./db";
 
-dotenv.config();
+// Load .env from Backend directory (parent of src)
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 async function main() {
   try {

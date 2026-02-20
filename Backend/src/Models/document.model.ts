@@ -1,33 +1,52 @@
-import mongoose from "mongoose";
+import { Schema, model, type HydratedDocument } from "mongoose";
 
-const documentSchema = new mongoose.Schema(
+type RiskLevel = "high" | "medium" | "low";
+type DocStatus = "processing" | "generated" | "analyzed";
+
+interface IRiskClause {
+  text: string;
+  riskLevel: RiskLevel;
+  explanation: string;
+  suggestion: string;
+}
+
+export interface IDocument {
+  userId: string;
+  title: string;
+  description: string; // <-- add this
+  contractText?: string;
+  riskFlags: string[];
+  status: DocStatus;
+  riskAnalysis: IRiskClause[];
+}
+
+export type DocumentDoc = HydratedDocument<IDocument>;
+
+const riskClauseSchema = new Schema<IRiskClause>(
   {
-    userId: {
-      type: mongoose.Types.ObjectId,
-      ref: "User",
-    },
-    title: {
-      type: String,
-      required: true,
-    },
-    description: {
-      type: String,
-      required: true,
-    },
-    contractText:{
-        type: String,
-    },
-    riskFlags:{
-        type: [String],
-    },
-    contractType:{
-        type: String,
-    },
+    text: { type: String, required: true },
+    riskLevel: { type: String, enum: ["high", "medium", "low"], required: true },
+    explanation: { type: String, required: true },
+    suggestion: { type: String, required: true },
   },
-  {
-    timestamps: true,
-  },
+  { _id: false }
 );
 
-const Document=mongoose.model("Document", documentSchema);
-export default Document;
+const documentSchema = new Schema<IDocument>(
+  {
+    userId: { type: String, required: true },
+    title: { type: String, required: true },
+    description: { type: String, required: true }, // <-- add this
+    contractText: { type: String },
+    riskFlags: { type: [String], default: [] },
+    status: {
+      type: String,
+      enum: ["processing", "generated", "analyzed"],
+      default: "processing",
+    },
+    riskAnalysis: { type: [riskClauseSchema], default: [] },
+  },
+  { timestamps: true }
+);
+
+export default model<IDocument>("Document", documentSchema);
