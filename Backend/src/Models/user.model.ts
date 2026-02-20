@@ -8,7 +8,14 @@ type UserModelType = {
   password: string;
 };
 
-const userSchema = new mongoose.Schema<UserModelType>(
+interface UserMethods {
+  comparePassword(candidatePassword: string): Promise<boolean>;
+  generateJWT(): string;
+}
+
+type UserModel = mongoose.Model<UserModelType, {}, UserMethods>;
+
+const userSchema = new mongoose.Schema<UserModelType, UserModel, UserMethods>(
   {
     name: {
       type: String,
@@ -37,5 +44,27 @@ userSchema.pre("save", async function () {
   }
 });
 
-const User = mongoose.model("User", userSchema);
+userSchema.methods.comparePassword = async function (
+  candidatePassword: string,
+) {
+  try {
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (err) {
+    throw new Error("Error comparing passwords");
+  }
+};
+
+userSchema.methods.generateJWT = function () {
+  try {
+    return jwt.sign(
+      { id: this._id },
+      process.env.JWT_SECRET ? process.env.JWT_SECRET : "secret",
+      { expiresIn: "1h" },
+    );
+  } catch (err) {
+    throw new Error("Error generating JWT");
+  }
+};
+
+const User = mongoose.model<UserModelType, UserModel>("User", userSchema);
 export default User;
