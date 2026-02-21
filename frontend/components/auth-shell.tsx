@@ -83,7 +83,7 @@ export function AuthShell({ mode }: AuthShellProps) {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <section className="mx-auto grid w-full max-w-7xl gap-8 px-6 py-10 lg:grid-cols-2 lg:items-center lg:px-10">
+      <section className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-10 lg:grid-cols-2 lg:items-center lg:px-10">
         <motion.div
           className="order-2 lg:order-1"
           initial={{ opacity: 0, x: -20 }}
@@ -111,10 +111,10 @@ export function AuthShell({ mode }: AuthShellProps) {
               </Badge>
 
               <div className="space-y-2">
-                <CardTitle className="text-3xl tracking-tight">
+                <CardTitle className="text-2xl sm:text-3xl tracking-tight">
                   {isLogin ? "Sign in to LexGen AI" : "Create your LexGen AI account"}
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm">
                   {isLogin
                     ? "Continue drafting and reviewing contracts with clause-level risk insights."
                     : "Join LexGen AI to generate smarter contracts and review risks before signing."}
@@ -238,7 +238,7 @@ export function AuthShell({ mode }: AuthShellProps) {
           </Card>
         </motion.div>
 
-        <div className="order-1 lg:order-2">
+        <div className="order-1 lg:order-2 hidden lg:block">
           <SplineScene />
         </div>
       </section>

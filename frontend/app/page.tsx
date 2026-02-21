@@ -70,7 +70,7 @@ const itemVariants = {
 export default function Home() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <section className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-14 lg:grid-cols-2 lg:items-center lg:px-10">
+      <section className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-10 sm:gap-10 sm:px-6 sm:py-14 lg:grid-cols-2 lg:items-center lg:px-10">
         <motion.div
           className="space-y-6"
           initial="hidden"
@@ -85,7 +85,7 @@ export default function Home() {
           </motion.div>
           <motion.h1
             variants={itemVariants}
-            className="text-4xl font-semibold tracking-tight md:text-5xl"
+            className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl"
           >
             LexGen AI builds smarter contracts for everyone.
           </motion.h1>
@@ -107,10 +107,12 @@ export default function Home() {
             Built for individuals and small organizations without legal expertise.
           </motion.div>
         </motion.div>
-        <SplineScene />
+        <div className="hidden lg:block">
+          <SplineScene />
+        </div>
       </section>
 
-      <section className="mx-auto w-full max-w-7xl px-6 py-8 lg:px-10">
+      <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
         <motion.div
           className="grid gap-4 md:grid-cols-3"
           initial="hidden"
@@ -138,7 +140,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      <section className="mx-auto w-full max-w-7xl px-6 py-8 lg:px-10">
+      <section className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -180,7 +182,7 @@ export default function Home() {
         </motion.div>
       </section>
 
-      <section className="mx-auto w-full max-w-7xl px-6 pb-16 pt-8 text-center lg:px-10">
+      <section className="mx-auto w-full max-w-7xl px-4 pb-12 pt-6 text-center sm:px-6 sm:pb-16 sm:pt-8 lg:px-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}

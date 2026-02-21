@@ -877,28 +877,28 @@ export default function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4 lg:px-10">
           <motion.div
             className="flex items-center gap-2"
             whileHover={{ scale: 1.02 }}
           >
-            <FileText className="size-6" />
-            <h1 className="text-xl font-semibold">LexGen AI</h1>
+            <FileText className="size-5 sm:size-6" />
+            <h1 className="text-lg sm:text-xl font-semibold">LexGen AI</h1>
           </motion.div>
-          <div className="flex items-center gap-4">
-            <div className="hidden text-sm md:block">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="hidden text-sm sm:block">
               <span className="text-muted-foreground">Welcome,</span>{" "}
               <span className="font-medium">{user?.name}</span>
             </div>
             <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="mr-2 size-4" />
-              Logout
+              <LogOut className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </div>
       </motion.header>
 
-      <div className="mx-auto max-w-7xl px-6 py-10 lg:px-10">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-10">
         {/* Welcome Section */}
         <motion.div
           className="mb-8 space-y-3"
@@ -910,18 +910,18 @@ export default function DashboardPage() {
             <Sparkles className="size-3.5" />
             AI-Powered Contract Intelligence
           </Badge>
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-3xl font-semibold tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
                 Generate & Analyze Legal Contracts
               </h2>
-              <p className="mt-3 max-w-2xl text-muted-foreground">
+              <p className="mt-2 sm:mt-3 text-sm sm:text-base max-w-2xl text-muted-foreground">
                 Describe your contract needs in plain language, and LexGen AI will draft a structured
                 agreement and identify potential risks.
               </p>
             </div>
             
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               {/* Create New Button - Show when there's a current document */}
               <AnimatePresence>
                 {currentDocument && (
@@ -964,7 +964,7 @@ export default function DashboardPage() {
                   </Button>
                   
                   {conversationExpanded && (
-                    <div className="absolute right-0 top-full z-50 mt-2 w-96 max-h-96 overflow-y-auto rounded-lg border border-border bg-background shadow-xl">
+                    <div className="absolute right-0 sm:right-0 left-0 sm:left-auto top-full z-50 mt-2 w-full sm:w-96 max-h-96 overflow-y-auto rounded-lg border border-border bg-background shadow-xl">
                       <div className="divide-y divide-border">
                         {currentDocument.conversationHistory
                           .filter(qa => qa.answer)
@@ -1001,7 +1001,7 @@ export default function DashboardPage() {
                   </Button>
                 
                 {historyExpanded && (
-                  <div className="absolute right-0 top-full z-50 mt-2 w-96 max-h-96 overflow-y-auto rounded-lg border border-border bg-background shadow-xl">
+                  <div className="absolute right-0 sm:right-0 left-0 sm:left-auto top-full z-50 mt-2 w-full sm:w-96 max-h-96 overflow-y-auto rounded-lg border border-border bg-background shadow-xl">
                     {loadingHistory ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -1108,11 +1108,11 @@ export default function DashboardPage() {
                 transition={{ duration: 0.3 }}
               >
                 <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4">
+              <CardHeader className="pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                   <div className="space-y-1.5">
-                    <CardTitle>Generated Contract</CardTitle>
-                    <CardDescription>
+                    <CardTitle className="text-lg sm:text-xl">Generated Contract</CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">
                       {isEditing 
                         ? "Edit the contract text and save your changes. You can re-analyze after saving."
                         : currentDocument.status === "analyzed" && currentRisks.length > 0
@@ -1120,7 +1120,7 @@ export default function DashboardPage() {
                         : "Review the generated contract and analyze it for potential risks"}
                     </CardDescription>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex flex-wrap gap-2 shrink-0">
                     {isEditing ? (
                       <>
                         <Button
@@ -1130,8 +1130,8 @@ export default function DashboardPage() {
                           size="sm"
                         >
                           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
-                          <Save className="mr-2 size-4" />
-                          {saving ? "Saving..." : "Save"}
+                          <Save className="size-4 sm:mr-2" />
+                          <span className="hidden sm:inline">{saving ? "Saving..." : "Save"}</span>
                         </Button>
                         <Button
                           onClick={handleEditToggle}
@@ -1139,8 +1139,8 @@ export default function DashboardPage() {
                           variant="outline"
                           size="sm"
                         >
-                          <X className="mr-2 size-4" />
-                          Cancel
+                          <X className="size-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Cancel</span>
                         </Button>
                       </>
                     ) : (
@@ -1150,16 +1150,16 @@ export default function DashboardPage() {
                           variant="outline"
                           size="sm"
                         >
-                          <Download className="mr-2 size-4" />
-                          Download PDF
+                          <Download className="size-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Download PDF</span>
                         </Button>
                         <Button
                           onClick={handleEditToggle}
                           variant="outline"
                           size="sm"
                         >
-                          <Edit3 className="mr-2 size-4" />
-                          Edit
+                          <Edit3 className="size-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Edit</span>
                         </Button>
                         {currentDocument.status !== "analyzed" && (
                           <Button
@@ -1169,8 +1169,8 @@ export default function DashboardPage() {
                             size="sm"
                           >
                             {analyzing && <Loader2 className="mr-2 size-4 animate-spin" />}
-                            <AlertTriangle className="mr-2 size-4" />
-                            {analyzing ? "Analyzing..." : "Analyze Risks"}
+                            <AlertTriangle className="size-4 sm:mr-2" />
+                            <span className="hidden sm:inline">{analyzing ? "Analyzing..." : "Analyze Risks"}</span>
                           </Button>
                         )}
                         {currentDocument.status === "analyzed" && (
@@ -1182,8 +1182,8 @@ export default function DashboardPage() {
                               size="sm"
                             >
                               {analyzing && <Loader2 className="mr-2 size-4 animate-spin" />}
-                              <AlertTriangle className="mr-2 size-4" />
-                              {analyzing ? "Re-analyzing..." : "Re-analyze"}
+                              <AlertTriangle className="size-4 sm:mr-2" />
+                              <span className="hidden sm:inline">{analyzing ? "Re-analyzing..." : "Re-analyze"}</span>
                             </Button>
                             {currentRisks.length > 0 && (
                               <Button
@@ -1193,8 +1193,8 @@ export default function DashboardPage() {
                                 size="sm"
                               >
                                 {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
-                                <CheckCheck className="mr-2 size-4" />
-                                {saving ? "Applying..." : "Apply All Suggestions"}
+                                <CheckCheck className="size-4 sm:mr-2" />
+                                <span className="hidden sm:inline">{saving ? "Applying..." : "Apply All"}</span>
                               </Button>
                             )}
                           </>
@@ -1323,18 +1323,18 @@ export default function DashboardPage() {
                     </p>
                   )}
                 </div>
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                   <div className="space-y-1.5">
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
                       <Sparkles className="size-5 text-blue-500" />
                       Additional Information Needed
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-sm">
                       Question {currentQuestionIndex + 1} of {currentDocument.pendingQuestions.length}
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap">
                       {currentDocument.pendingQuestions.map((_, idx) => (
                         <div
                           key={idx}
@@ -1397,7 +1397,7 @@ export default function DashboardPage() {
                   )}
 
                   {/* Navigation Buttons */}
-                  <div className="flex items-center justify-between gap-3 pt-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
                     {/* Left Side - Back Button */}
                     <Button
                       onClick={() => {
@@ -1407,6 +1407,7 @@ export default function DashboardPage() {
                       disabled={loading || currentQuestionIndex === 0}
                       variant="outline"
                       size="lg"
+                      className="w-full sm:w-auto"
                     >
                       <ChevronLeft className="mr-1 size-4" />
                       Back
@@ -1418,7 +1419,7 @@ export default function DashboardPage() {
                       disabled={loading}
                       size="lg"
                       variant="outline"
-                      className="text-muted-foreground"
+                      className="text-muted-foreground w-full sm:w-auto order-last sm:order-0"
                     >
                       <SkipForward className="mr-2 size-4" />
                       Skip All
@@ -1433,6 +1434,7 @@ export default function DashboardPage() {
                         }}
                         disabled={loading}
                         size="lg"
+                        className="w-full sm:w-auto"
                       >
                         Next
                         <ChevronRight className="ml-1 size-4" />
@@ -1442,6 +1444,7 @@ export default function DashboardPage() {
                         onClick={handleSubmitAnswers}
                         disabled={loading}
                         size="lg"
+                        className="w-full sm:w-auto"
                       >
                         {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
                         {loading ? "Generating..." : "Submit & Generate"}

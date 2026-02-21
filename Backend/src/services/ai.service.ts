@@ -5,6 +5,19 @@ import { searchSimilarChunks } from './vector.service.js';
 
 let openai: OpenAI | null = null;
 
+// Helper function to strip markdown formatting from text
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')  // Remove **bold**
+    .replace(/\*([^*]+)\*/g, '$1')       // Remove *italic*
+    .replace(/__([^_]+)__/g, '$1')       // Remove __bold__
+    .replace(/_([^_]+)_/g, '$1')         // Remove _italic_
+    .replace(/^#{1,6}\s*/gm, '')         // Remove # headers
+    .replace(/^[-*]\s+/gm, '• ')         // Convert markdown lists to bullets
+    .replace(/```[^`]*```/g, '')         // Remove code blocks
+    .replace(/`([^`]+)`/g, '$1');        // Remove inline code
+}
+
 async function getOpenAIClient() {
   if (!openai) {
     logger.debug("getOpenAIClient", "Initializing OpenAI client");
@@ -71,8 +84,26 @@ Example clauses from legal templates for reference:
 
 ${relevantContext}
 
-Generate a clear, well-formatted legal contract based on the description provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures. Format the document with proper line breaks and spacing for readability. Use plain text with line breaks (\\n) - do NOT use HTML tags or markdown formatting. Return only the contract text.`
-    : "You are a professional legal contract drafter. Generate a clear, well-formatted legal contract based on the description provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures. Format the document with proper line breaks and spacing for readability. Use plain text with line breaks (\\n) - do NOT use HTML tags or markdown formatting. Return only the contract text.";
+Generate a clear, well-formatted legal contract based on the description provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures.
+
+CRITICAL FORMATTING RULES:
+- Use ONLY plain text with line breaks
+- NO markdown (no **, no ##, no *, no _, no headers)
+- NO HTML tags
+- Use CAPS or spacing for emphasis instead of formatting
+- Section headers should be plain text like "1. POSITION AND START DATE" not "**1. Position**"
+
+Return only the contract text.`
+    : `You are a professional legal contract drafter. Generate a clear, well-formatted legal contract based on the description provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures.
+
+CRITICAL FORMATTING RULES:
+- Use ONLY plain text with line breaks
+- NO markdown (no **, no ##, no *, no _, no headers)
+- NO HTML tags
+- Use CAPS or spacing for emphasis instead of formatting
+- Section headers should be plain text like "1. POSITION AND START DATE" not "**1. Position**"
+
+Return only the contract text.`;
 
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
@@ -89,7 +120,9 @@ Generate a clear, well-formatted legal contract based on the description provide
     temperature: 0.3,
   });
 
-  const contractText = response.choices[0]?.message?.content ?? "";
+  let contractText = response.choices[0]?.message?.content ?? "";
+  contractText = stripMarkdown(contractText);
+    
   logger.info("generateContract", "Contract generated successfully with RAG enhancement");
   return contractText;
 };
@@ -326,8 +359,26 @@ Example clauses from legal templates for reference:
 
 ${relevantContext}
 
-Generate a clear, well-formatted legal contract based on the description and the Q&A conversation provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures. Format the document with proper line breaks and spacing for readability. Use plain text with line breaks (\\n) - do NOT use HTML tags or markdown formatting. Return only the contract text.`
-    : "You are a professional legal contract drafter. Generate a clear, well-formatted legal contract based on the description and clarifying information provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures. Format the document with proper line breaks and spacing for readability. Use plain text with line breaks (\\n) - do NOT use HTML tags or markdown formatting. Return only the contract text.";
+Generate a clear, well-formatted legal contract based on the description and the Q&A conversation provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures.
+
+CRITICAL FORMATTING RULES:
+- Use ONLY plain text with line breaks
+- NO markdown (no **, no ##, no *, no _, no headers)
+- NO HTML tags
+- Use CAPS or spacing for emphasis instead of formatting
+- Section headers should be plain text like "1. POSITION AND START DATE" not "**1. Position**"
+
+Return only the contract text.`
+    : `You are a professional legal contract drafter. Generate a clear, well-formatted legal contract based on the description and clarifying information provided. Include standard sections such as parties, recitals, terms, obligations, termination, and signatures.
+
+CRITICAL FORMATTING RULES:
+- Use ONLY plain text with line breaks
+- NO markdown (no **, no ##, no *, no _, no headers)
+- NO HTML tags
+- Use CAPS or spacing for emphasis instead of formatting
+- Section headers should be plain text like "1. POSITION AND START DATE" not "**1. Position**"
+
+Return only the contract text.`;
 
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
@@ -351,7 +402,9 @@ Create a complete contract incorporating all the provided information.`,
     temperature: 0.3,
   });
 
-  const contractText = response.choices[0]?.message?.content ?? "";
+  let contractText = response.choices[0]?.message?.content ?? "";
+  contractText = stripMarkdown(contractText);
+    
   logger.info("generateContractWithContext", "Contract generated successfully with conversation context");
   return contractText;
 };
@@ -460,7 +513,8 @@ Please provide the full updated contract with the risky clause replaced by an im
     temperature: 0.2,
   });
 
-  const updatedContract = response.choices[0]?.message?.content ?? "";
+  let updatedContract = response.choices[0]?.message?.content ?? "";
+  updatedContract = stripMarkdown(updatedContract);
   logger.info("applySuggestion", "Suggestion applied successfully");
   return updatedContract;
 };
@@ -508,7 +562,8 @@ Please provide the full updated contract with all risky clauses replaced by impr
     temperature: 0.2,
   });
 
-  const updatedContract = response.choices[0]?.message?.content ?? "";
+  let updatedContract = response.choices[0]?.message?.content ?? "";
+  updatedContract = stripMarkdown(updatedContract);
   logger.info("applyAllSuggestions", `All ${risks.length} suggestions applied successfully`);
   return updatedContract;
 };

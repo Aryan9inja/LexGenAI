@@ -83,7 +83,7 @@ export function Modal({
           {/* Modal Content */}
           <motion.div
             className={cn(
-              "relative z-10 w-full max-w-md mx-4 bg-background rounded-xl shadow-2xl border border-border",
+              "relative z-10 w-full max-w-md mx-3 sm:mx-4 bg-background rounded-xl shadow-2xl border border-border max-h-[90vh] overflow-y-auto",
               className
             )}
             variants={modalVariants}
