@@ -13,17 +13,11 @@
  * 2. User types -> `handleTextChange` updates `currentDocument.contractText` directly
  * 3. User saves -> API call updates backend, refreshes `currentDocument`, clears backup
  * 4. User cancels -> Restores original text from backup, exits edit mode
- * 
- * PDF GENERATION (Future):
- * - Use `getDocumentData()` for clean structured data
- * - Use `getCleanDocumentText()` for plain text without HTML
- * - Use `getDocumentWithRisks()` for highlighted version with risk markup
- * 
- * This ensures consistency across editor, display, and export functions.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   FileText, 
   AlertTriangle, 
@@ -34,23 +28,55 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Edit3,
   Save,
   X,
-  Download
+  Download,
+  SkipForward,
+  Plus,
+  Check,
+  CheckCheck
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SuggestionModal } from "@/components/ui/modal";
+import { Spinner } from "@/components/ui/spinner";
+import { SkeletonDocument, SkeletonForm } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { downloadContractPDF } from "@/lib/pdf-utils";
+
+// Animation variants
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -10 },
+};
+
+const staggerContainer = {
+  animate: {
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+};
 
 type RiskClause = {
   text: string;
   riskLevel: "high" | "medium" | "low";
   explanation: string;
   suggestion: string;
+};
+
+type QuestionAnswer = {
+  question: string;
+  answer?: string;
+  timestamp: string;
 };
 
 type DocumentData = {
@@ -62,31 +88,14 @@ type DocumentData = {
   status: string;
   createdAt?: string;
   updatedAt?: string;
-};
-
-type ApiDocument = {
-  _id: string;
-  title: string;
-  contractText?: string;
-  riskAnalysis?: RiskClause[];
-  status: string;
-};
-
-const riskColors: Record<string, string> = {
-  high: "border-red-500 bg-red-100 hover:bg-red-200",
-  medium: "border-cyan-400 bg-cyan-50 hover:bg-cyan-100",
-  low: "border-yellow-400 bg-yellow-50 hover:bg-yellow-100",
-};
-
-const riskTextColors: Record<string, string> = {
-  high: "text-red-900",
-  medium: "text-cyan-900",
-  low: "text-yellow-900",
+  pendingQuestions?: string[];
+  conversationHistory?: QuestionAnswer[];
 };
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, logout, loading: authLoading } = useAuth();
+  const toast = useToast();
   
   // Form state
   const [description, setDescription] = useState("");
@@ -96,9 +105,14 @@ export default function DashboardPage() {
   const [currentDocument, setCurrentDocument] = useState<DocumentData | null>(null);
   const [documentHistory, setDocumentHistory] = useState<DocumentData[]>([]);
   
+  // Q&A state
+  const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  
   // UI state
   const [isEditing, setIsEditing] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [conversationExpanded, setConversationExpanded] = useState(false);
   const [originalTextBeforeEdit, setOriginalTextBeforeEdit] = useState<string>("");
   
   // Loading states
@@ -109,11 +123,137 @@ export default function DashboardPage() {
   
   // Error state
   const [error, setError] = useState("");
+  
+  // Suggestion modal state
+  const [suggestionModal, setSuggestionModal] = useState<{
+    isOpen: boolean;
+    riskIndex: number;
+    question: string;
+    riskLevel: "high" | "medium" | "low";
+    isLoadingQuestion: boolean;
+  }>({
+    isOpen: false,
+    riskIndex: -1,
+    question: "",
+    riskLevel: "medium",
+    isLoadingQuestion: false,
+  });
 
   // Derived state - computed from currentDocument (ALWAYS IN SYNC)
   // These are the ONLY places where document text and risks should be accessed
   const currentText = currentDocument?.contractText || "";
   const currentRisks = currentDocument?.riskAnalysis || [];
+
+  // Fetch document history helper
+  const fetchDocumentHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const data = await api.documents.getAll();
+      setDocumentHistory(data.documents);
+    } catch (err) {
+      console.error("Failed to fetch document history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  // Apply suggestion handlers
+  const openSuggestionModal = useCallback(async (riskIndex: number) => {
+    if (!currentDocument || !currentRisks[riskIndex]) return;
+    
+    // Open modal immediately with loading state for instant feedback
+    setSuggestionModal({
+      isOpen: true,
+      riskIndex,
+      question: "",
+      riskLevel: currentRisks[riskIndex].riskLevel,
+      isLoadingQuestion: true,
+    });
+    
+    try {
+      setError("");
+      
+      // Fetch the follow-up question in the background
+      const questionData = await api.documents.getSuggestionQuestion(
+        currentDocument._id,
+        riskIndex
+      );
+      
+      // Update modal with the question
+      setSuggestionModal(prev => ({
+        ...prev,
+        question: questionData.question,
+        isLoadingQuestion: false,
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to get suggestion question";
+      setError(message);
+      toast.error(message);
+      // Close modal on error
+      setSuggestionModal(prev => ({ ...prev, isOpen: false, isLoadingQuestion: false }));
+    }
+  }, [currentDocument, currentRisks, toast]);
+
+  const handleSuggestionSubmit = useCallback(async (answer: string) => {
+    if (!currentDocument || suggestionModal.riskIndex < 0) return;
+    
+    try {
+      setError("");
+      setSaving(true);
+      
+      // Apply the suggestion with the additional context
+      const data = await api.documents.applySuggestion(
+        currentDocument._id,
+        suggestionModal.riskIndex,
+        answer || undefined
+      );
+      
+      setCurrentDocument(data.document as DocumentData);
+      fetchDocumentHistory();
+      toast.success("Suggestion applied successfully!");
+      
+      // Close the modal
+      setSuggestionModal(prev => ({ ...prev, isOpen: false }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to apply suggestion";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  }, [currentDocument, suggestionModal.riskIndex, fetchDocumentHistory, toast]);
+
+  const closeSuggestionModal = useCallback(() => {
+    setSuggestionModal(prev => ({ ...prev, isOpen: false }));
+  }, []);
+
+  const applyAllSuggestions = useCallback(() => {
+    if (!currentDocument || currentRisks.length === 0) return;
+    
+    const confirmed = confirm(
+      `Apply all ${currentRisks.length} suggestion${currentRisks.length > 1 ? 's' : ''}?\n\n` +
+      `This will use AI to rewrite all risky clauses in the contract following the suggestions. ` +
+      `The changes will be automatically saved.\n\n` +
+      `Do you want to proceed?`
+    );
+    
+    if (!confirmed) return;
+    
+    setError("");
+    setSaving(true);
+    
+    api.documents.applyAllSuggestions(currentDocument._id)
+      .then((data) => {
+        setCurrentDocument(data.document as DocumentData);
+        fetchDocumentHistory();
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to apply suggestions");
+      })
+      .finally(() => {
+        setSaving(false);
+      });
+  }, [currentDocument, currentRisks, fetchDocumentHistory]);
 
   // Fetch document history on mount
   useEffect(() => {
@@ -121,6 +261,25 @@ export default function DashboardPage() {
       fetchDocumentHistory();
     }
   }, [user]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      // Check if click is outside both dropdowns
+      if (!target.closest('[data-dropdown]')) {
+        setHistoryExpanded(false);
+        setConversationExpanded(false);
+      }
+    };
+
+    if (historyExpanded || conversationExpanded) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [historyExpanded, conversationExpanded]);
 
   // Add tooltip handlers for risk highlights
   useEffect(() => {
@@ -154,55 +313,120 @@ export default function DashboardPage() {
         
         // Small delay before showing tooltip
         tooltipTimeout = setTimeout(() => {
-          // Create tooltip
+          // Create tooltip with improved structure
           const tooltip = document.createElement('div');
           tooltip.id = 'risk-tooltip';
+          tooltip.className = 'risk-tooltip-container';
           tooltip.style.cssText = `
             position: fixed;
             background: #1f2937;
             color: white;
-            padding: 16px;
-            border-radius: 8px;
+            padding: 12px;
+            border-radius: 10px;
             font-size: 13px;
-            line-height: 1.6;
-            max-width: 350px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            line-height: 1.5;
+            max-width: 320px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
             z-index: 9999;
-            pointer-events: none;
+            pointer-events: auto;
             opacity: 0;
-            transition: opacity 0.2s ease;
+            transition: opacity 0.15s ease;
           `;
           
           tooltip.innerHTML = `
-            <div style="font-weight: 600; margin-bottom: 8px; text-transform: uppercase; color: ${
-              level === 'high' ? '#fca5a5' : level === 'medium' ? '#67e8f9' : '#fde68a'
-            }">
-              ${level} Risk
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px;">
+              <span style="font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: ${
+                level === 'high' ? '#fca5a5' : level === 'medium' ? '#fb923c' : '#fde68a'
+              }; background: ${
+                level === 'high' ? 'rgba(239, 68, 68, 0.15)' : level === 'medium' ? 'rgba(251, 146, 60, 0.15)' : 'rgba(250, 204, 21, 0.15)'
+              }; padding: 4px 8px; border-radius: 4px;">
+                ${level} Risk
+              </span>
+              <button
+                id="apply-suggestion-btn-${riskIndex}"
+                style="
+                  padding: 6px 12px;
+                  background: #3b82f6;
+                  color: white;
+                  border: none;
+                  border-radius: 6px;
+                  font-size: 12px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  transition: all 0.15s;
+                  display: flex;
+                  align-items: center;
+                  gap: 4px;
+                  white-space: nowrap;
+                "
+                onmouseover="this.style.background='#2563eb'; this.style.transform='scale(1.02)'"
+                onmouseout="this.style.background='#3b82f6'; this.style.transform='scale(1)'"
+              >
+                ✓ Fix This
+              </button>
             </div>
-            <div style="margin-bottom: 12px;">
-              <div style="font-weight: 500; margin-bottom: 4px;">Why risky:</div>
-              <div>${explanation}</div>
+            <div style="margin-bottom: 8px;">
+              <div style="font-weight: 500; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #9ca3af;">Why risky</div>
+              <div style="font-size: 12px; color: #e5e7eb;">${explanation}</div>
             </div>
             <div>
-              <div style="font-weight: 500; margin-bottom: 4px;">Suggestion:</div>
-              <div>${suggestion}</div>
+              <div style="font-weight: 500; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #9ca3af;">Suggestion</div>
+              <div style="font-size: 12px; color: #e5e7eb;">${suggestion}</div>
             </div>
           `;
           
           document.body.appendChild(tooltip);
           
-          // Position tooltip
+          // Add click handler for the apply button
+          const applyBtn = document.getElementById(`apply-suggestion-btn-${riskIndex}`);
+          if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+              openSuggestionModal(riskIndex);
+              removeTooltip();
+            });
+          }
+          
+          // Position tooltip with better overflow handling
           const rect = target.getBoundingClientRect();
           const tooltipRect = tooltip.getBoundingClientRect();
+          const viewportHeight = window.innerHeight;
+          const viewportWidth = window.innerWidth;
+          const margin = 12;
           
-          let top = rect.top - tooltipRect.height - 10;
-          let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+          // Calculate optimal position
+          let top: number;
+          let left: number;
           
-          // Adjust if tooltip goes off screen
-          if (top < 10) top = rect.bottom + 10;
-          if (left < 10) left = 10;
-          if (left + tooltipRect.width > window.innerWidth - 10) {
-            left = window.innerWidth - tooltipRect.width - 10;
+          // Try to position above the target first
+          const spaceAbove = rect.top;
+          const spaceBelow = viewportHeight - rect.bottom;
+          
+          if (spaceAbove >= tooltipRect.height + margin) {
+            // Position above
+            top = rect.top - tooltipRect.height - margin;
+          } else if (spaceBelow >= tooltipRect.height + margin) {
+            // Position below
+            top = rect.bottom + margin;
+          } else {
+            // Position in the middle of the viewport, centered vertically
+            top = Math.max(margin, (viewportHeight - tooltipRect.height) / 2);
+          }
+          
+          // Horizontal positioning - center on target, but keep within viewport
+          left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+          
+          // Clamp to viewport bounds
+          if (left < margin) left = margin;
+          if (left + tooltipRect.width > viewportWidth - margin) {
+            left = viewportWidth - tooltipRect.width - margin;
+          }
+          
+          // Ensure top is within bounds
+          if (top < margin) top = margin;
+          if (top + tooltipRect.height > viewportHeight - margin) {
+            top = viewportHeight - tooltipRect.height - margin;
           }
           
           tooltip.style.top = `${top}px`;
@@ -212,14 +436,34 @@ export default function DashboardPage() {
           requestAnimationFrame(() => {
             tooltip.style.opacity = '1';
           });
-        }, 150);
+        }, 100);
       }
     };
     
     const handleMouseOut = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      const relatedTarget = e.relatedTarget as HTMLElement;
+      
+      // Don't remove tooltip if moving to the tooltip itself
       if (target.tagName === 'MARK' && target.hasAttribute('data-risk-index')) {
-        removeTooltip();
+        if (!relatedTarget || !relatedTarget.closest('#risk-tooltip')) {
+          // Delay removal to allow moving mouse to tooltip
+          setTimeout(() => {
+            const tooltip = document.getElementById('risk-tooltip');
+            if (tooltip && !tooltip.matches(':hover')) {
+              removeTooltip();
+            }
+          }, 150);
+        }
+      }
+    };
+    
+    const handleTooltipMouseLeave = () => {
+      const tooltip = document.getElementById('risk-tooltip');
+      if (tooltip) {
+        tooltip.addEventListener('mouseleave', () => {
+          removeTooltip();
+        });
       }
     };
     
@@ -231,25 +475,22 @@ export default function DashboardPage() {
     document.addEventListener('mouseout', handleMouseOut);
     document.addEventListener('scroll', handleScroll, true);
     
+    // Check for tooltip mouse leave periodically
+    const tooltipCheckInterval = setInterval(() => {
+      const tooltip = document.getElementById('risk-tooltip');
+      if (tooltip) {
+        handleTooltipMouseLeave();
+      }
+    }, 200);
+    
     return () => {
       removeTooltip();
+      clearInterval(tooltipCheckInterval);
       document.removeEventListener('mouseover', handleMouseOver);
       document.removeEventListener('mouseout', handleMouseOut);
       document.removeEventListener('scroll', handleScroll, true);
     };
-  }, [currentRisks]);
-
-  const fetchDocumentHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const data = await api.documents.getAll();
-      setDocumentHistory(data.documents);
-    } catch (err) {
-      console.error("Failed to fetch document history:", err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
+  }, [currentRisks, openSuggestionModal]);
 
   const highlightRiskyText = (text: string, risks: RiskClause[]): string => {
     if (!risks || risks.length === 0) return text;
@@ -257,7 +498,7 @@ export default function DashboardPage() {
     // Define inline styles for each risk level
     const riskStyles: Record<string, string> = {
       high: 'background-color: #fecaca; border-bottom: 2px solid #ef4444; padding: 2px 4px; border-radius: 3px; font-weight: 500;',
-      medium: 'background-color: #cffafe; border-bottom: 2px solid #22d3ee; padding: 2px 4px; border-radius: 3px; font-weight: 500;',
+      medium: 'background-color: #fed7aa; border-bottom: 2px solid #fb923c; padding: 2px 4px; border-radius: 3px; font-weight: 500;',
       low: 'background-color: #fef3c7; border-bottom: 2px solid #facc15; padding: 2px 4px; border-radius: 3px; font-weight: 500;',
     };
     
@@ -348,6 +589,7 @@ export default function DashboardPage() {
     setLoading(true);
     setCurrentDocument(null);
     setIsEditing(false);
+    setQuestionAnswers({});
 
     try {
       const createData = await api.documents.create(
@@ -356,6 +598,99 @@ export default function DashboardPage() {
       );
       const genData = await api.documents.generate(createData.document._id);
       setCurrentDocument(genData.document as DocumentData);
+      
+      // Check if there are pending questions
+      if (genData.document.status === "awaiting_info" && (genData.document as any).pendingQuestions?.length > 0) {
+        // Initialize empty answers for each question
+        const initialAnswers: Record<string, string> = {};
+        ((genData.document as any).pendingQuestions as string[]).forEach((q: string) => {
+          initialAnswers[q] = "";
+        });
+        setQuestionAnswers(initialAnswers);
+        setCurrentQuestionIndex(0);
+        toast.info("Additional information needed to complete your contract");
+      } else {
+        toast.success("Contract generated successfully!");
+      }
+      
+      // Refresh document history
+      fetchDocumentHistory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to generate contract";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitAnswers = async () => {
+    if (!currentDocument) return;
+    
+    // Validate that all questions have been answered
+    const pendingQuestions = currentDocument.pendingQuestions || [];
+    const unansweredQuestions = pendingQuestions.filter(q => !questionAnswers[q]?.trim());
+    
+    if (unansweredQuestions.length > 0) {
+      setError("Please answer all questions before continuing");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
+    try {
+      // Submit the answers
+      const answers = pendingQuestions.map(question => ({
+        question,
+        answer: questionAnswers[question],
+      }));
+      
+      await api.documents.answerQuestions(currentDocument._id, answers);
+      
+      // Regenerate the contract with the new information
+      const genData = await api.documents.generate(currentDocument._id);
+      setCurrentDocument(genData.document as DocumentData);
+      
+      // Check if there are still more pending questions
+      if (genData.document.status === "awaiting_info" && (genData.document as any).pendingQuestions?.length > 0) {
+        // Initialize empty answers for new questions
+        const initialAnswers: Record<string, string> = {};
+        ((genData.document as any).pendingQuestions as string[]).forEach((q: string) => {
+          initialAnswers[q] = "";
+        });
+        setQuestionAnswers(initialAnswers);
+        setCurrentQuestionIndex(0);
+      } else {
+        // Clear the Q&A state
+        setQuestionAnswers({});
+        setCurrentQuestionIndex(0);
+      }
+      
+      // Refresh document history
+      fetchDocumentHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to submit answers");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkipQuestions = async () => {
+    if (!currentDocument) return;
+
+    setError("");
+    setLoading(true);
+
+    try {
+      // Force generate the contract even with incomplete information
+      const genData = await api.documents.generate(currentDocument._id, true);
+      setCurrentDocument(genData.document as DocumentData);
+      
+      // Clear the Q&A state
+      setQuestionAnswers({});
+      setCurrentQuestionIndex(0);
+      
       // Refresh document history
       fetchDocumentHistory();
     } catch (err) {
@@ -363,6 +698,19 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCreateNew = () => {
+    // Reset all state to start fresh
+    setCurrentDocument(null);
+    setDescription("");
+    setTitle("");
+    setQuestionAnswers({});
+    setCurrentQuestionIndex(0);
+    setError("");
+    setIsEditing(false);
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleLoadDocument = async (docId: string) => {
@@ -389,8 +737,16 @@ export default function DashboardPage() {
     try {
       const data = await api.documents.analyzeRisk(currentDocument._id);
       setCurrentDocument(data.document);
+      const risksFound = data.document.riskAnalysis?.length || 0;
+      if (risksFound > 0) {
+        toast.warning(`Analysis complete: ${risksFound} risk${risksFound > 1 ? 's' : ''} identified`);
+      } else {
+        toast.success("Analysis complete: No significant risks found!");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to analyze risk");
+      const message = err instanceof Error ? err.message : "Failed to analyze risk";
+      setError(message);
+      toast.error(message);
     } finally {
       setAnalyzing(false);
     }
@@ -445,8 +801,11 @@ export default function DashboardPage() {
       setOriginalTextBeforeEdit(""); // Clear the backup
       // Refresh document history
       fetchDocumentHistory();
+      toast.success("Changes saved successfully!");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save changes");
+      const message = err instanceof Error ? err.message : "Failed to save changes";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -455,13 +814,15 @@ export default function DashboardPage() {
   const handleLogout = async () => {
     try {
       await logout();
+      toast.success("Logged out successfully");
       router.push("/");
     } catch (err) {
       console.error("Logout failed:", err);
+      toast.error("Failed to logout");
     }
   };
 
-  // Utility functions for centralized data access (useful for PDF generation)
+  // Utility function for centralized data access (used for PDF generation)
   const getDocumentData = () => {
     if (!currentDocument) return null;
     return {
@@ -474,20 +835,6 @@ export default function DashboardPage() {
       status: currentDocument.status,
       createdAt: currentDocument.createdAt,
       updatedAt: currentDocument.updatedAt,
-    };
-  };
-
-  const getCleanDocumentText = () => {
-    return stripHtmlTags(currentText);
-  };
-
-  const getDocumentWithRisks = () => {
-    if (!currentDocument) return null;
-    return {
-      ...getDocumentData(),
-      highlightedHTML: currentRisks.length > 0 
-        ? highlightRiskyText(currentText, currentRisks) 
-        : currentText,
     };
   };
 
@@ -509,7 +856,14 @@ export default function DashboardPage() {
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <Spinner size="xl" />
+          <p className="text-sm text-muted-foreground animate-pulse">Loading your workspace...</p>
+        </motion.div>
       </div>
     );
   }
@@ -517,12 +871,20 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border">
+      <motion.header
+        className="border-b border-border"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
-          <div className="flex items-center gap-2">
+          <motion.div
+            className="flex items-center gap-2"
+            whileHover={{ scale: 1.02 }}
+          >
             <FileText className="size-6" />
             <h1 className="text-xl font-semibold">LexGen AI</h1>
-          </div>
+          </motion.div>
           <div className="flex items-center gap-4">
             <div className="hidden text-sm md:block">
               <span className="text-muted-foreground">Welcome,</span>{" "}
@@ -534,11 +896,16 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       <div className="mx-auto max-w-7xl px-6 py-10 lg:px-10">
         {/* Welcome Section */}
-        <div className="mb-8 space-y-3">
+        <motion.div
+          className="mb-8 space-y-3"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.4 }}
+        >
           <Badge variant="secondary" className="gap-1">
             <Sparkles className="size-3.5" />
             AI-Powered Contract Intelligence
@@ -554,22 +921,84 @@ export default function DashboardPage() {
               </p>
             </div>
             
-            {/* Document History Dropdown */}
-            {documentHistory.length > 0 && (
-              <div className="relative shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={() => setHistoryExpanded(!historyExpanded)}
-                  className="gap-2"
-                >
-                  <Clock className="size-4" />
-                  History ({documentHistory.length})
-                  {historyExpanded ? (
-                    <ChevronUp className="size-4" />
-                  ) : (
-                    <ChevronDown className="size-4" />
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Create New Button - Show when there's a current document */}
+              <AnimatePresence>
+                {currentDocument && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                  >
+                    <Button
+                      onClick={handleCreateNew}
+                      variant="default"
+                      className="gap-2"
+                    >
+                      <Plus className="size-4" />
+                      Create New
+                    </Button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Conversation History Dropdown - Show during Q&A if there are answered questions */}
+              {currentDocument?.conversationHistory && 
+               currentDocument.conversationHistory.filter(qa => qa.answer).length > 0 && (
+                <div className="relative" data-dropdown>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setConversationExpanded(!conversationExpanded);
+                      setHistoryExpanded(false);
+                    }}
+                    className="gap-2"
+                  >
+                    <Sparkles className="size-4" />
+                    Questions ({currentDocument.conversationHistory.filter(qa => qa.answer).length})
+                    {conversationExpanded ? (
+                      <ChevronUp className="size-4" />
+                    ) : (
+                      <ChevronDown className="size-4" />
+                    )}
+                  </Button>
+                  
+                  {conversationExpanded && (
+                    <div className="absolute right-0 top-full z-50 mt-2 w-96 max-h-96 overflow-y-auto rounded-lg border border-border bg-background shadow-xl">
+                      <div className="divide-y divide-border">
+                        {currentDocument.conversationHistory
+                          .filter(qa => qa.answer)
+                          .map((qa, idx) => (
+                            <div key={idx} className="p-4 space-y-2">
+                              <p className="text-sm font-medium">Q: {qa.question}</p>
+                              <p className="text-sm text-muted-foreground">A: {qa.answer}</p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
                   )}
-                </Button>
+                </div>
+              )}
+
+              {/* Document History Dropdown */}
+              {documentHistory.length > 0 && (
+                <div className="relative" data-dropdown>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setHistoryExpanded(!historyExpanded);
+                      setConversationExpanded(false);
+                    }}
+                    className="gap-2"
+                  >
+                    <Clock className="size-4" />
+                    History ({documentHistory.length})
+                    {historyExpanded ? (
+                      <ChevronUp className="size-4" />
+                    ) : (
+                      <ChevronDown className="size-4" />
+                    )}
+                  </Button>
                 
                 {historyExpanded && (
                   <div className="absolute right-0 top-full z-50 mt-2 w-96 max-h-96 overflow-y-auto rounded-lg border border-border bg-background shadow-xl">
@@ -585,6 +1014,7 @@ export default function DashboardPage() {
                             onClick={() => {
                               handleLoadDocument(doc._id);
                               setHistoryExpanded(false);
+                              setConversationExpanded(false);
                             }}
                             className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-muted/50"
                           >
@@ -610,12 +1040,6 @@ export default function DashboardPage() {
                                 >
                                   {doc.status}
                                 </Badge>
-                                {doc.riskAnalysis && doc.riskAnalysis.length > 0 && (
-                                  <span className="flex items-center gap-1">
-                                    <AlertTriangle className="size-3.5" />
-                                    {doc.riskAnalysis.length}
-                                  </span>
-                                )}
                               </div>
                             </div>
                             <Eye className="size-4 shrink-0 text-muted-foreground" />
@@ -630,67 +1054,60 @@ export default function DashboardPage() {
                     )}
                   </div>
                 )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid gap-6" id="current-document">
-          {/* Input Form */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Create a New Contract</CardTitle>
-              <CardDescription>
-                Tell us what kind of contract you need, and we'll generate it for you
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="title" className="text-sm font-medium">
-                  Contract Title
-                </label>
-                <input
-                  id="title"
-                  type="text"
-                  className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                  placeholder="e.g., Freelance Service Agreement"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="description" className="text-sm font-medium">
-                  Contract Description
-                </label>
-                <textarea
-                  id="description"
-                  className="min-h-32 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                  placeholder="Describe your contract in plain language... For example: A service agreement between a freelance developer and a startup for 3 months of work, $5000/month, with IP rights assigned to the client after full payment."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-              {error && (
-                <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
-                  {error}
                 </div>
               )}
-              <Button
-                onClick={handleGenerate}
-                disabled={loading || !description.trim()}
-                size="lg"
-              >
-                {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
-                {loading ? "Generating Contract..." : "Generate Contract"}
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        </motion.div>
 
-          {/* Generated Contract */}
-          {currentDocument?.contractText && (
-            <Card>
+        <motion.div
+          className="grid gap-6"
+          id="current-document"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.4 }}
+        >
+          {/* Loading skeleton while generating */}
+          {loading && !currentDocument?.contractText && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <Card className="overflow-hidden">
+                <CardHeader className="border-b border-border bg-muted/30">
+                  <div className="flex items-center gap-3">
+                    <Spinner size="md" />
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="size-5 text-foreground/70" />
+                        Generating Your Contract
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        LexGen AI is analyzing your requirements and drafting a structured contract...
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <Progress indeterminate className="mb-4" />
+                  <SkeletonDocument />
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Generated Contract - Shows first when available */}
+          <AnimatePresence mode="wait">
+            {currentDocument?.contractText && (
+              <motion.div
+                key="contract"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Card>
               <CardHeader>
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1.5">
@@ -699,7 +1116,7 @@ export default function DashboardPage() {
                       {isEditing 
                         ? "Edit the contract text and save your changes. You can re-analyze after saving."
                         : currentDocument.status === "analyzed" && currentRisks.length > 0
-                        ? `${currentRisks.length} risk${currentRisks.length !== 1 ? 's' : ''} identified - hover over highlighted text for details`
+                        ? "Some risks identified - hover over highlighted text for details"
                         : "Review the generated contract and analyze it for potential risks"}
                     </CardDescription>
                   </div>
@@ -757,16 +1174,30 @@ export default function DashboardPage() {
                           </Button>
                         )}
                         {currentDocument.status === "analyzed" && (
-                          <Button
-                            onClick={handleAnalyzeRisk}
-                            disabled={analyzing}
-                            variant="secondary"
-                            size="sm"
-                          >
-                            {analyzing && <Loader2 className="mr-2 size-4 animate-spin" />}
-                            <AlertTriangle className="mr-2 size-4" />
-                            {analyzing ? "Re-analyzing..." : "Re-analyze"}
-                          </Button>
+                          <>
+                            <Button
+                              onClick={handleAnalyzeRisk}
+                              disabled={analyzing}
+                              variant="secondary"
+                              size="sm"
+                            >
+                              {analyzing && <Loader2 className="mr-2 size-4 animate-spin" />}
+                              <AlertTriangle className="mr-2 size-4" />
+                              {analyzing ? "Re-analyzing..." : "Re-analyze"}
+                            </Button>
+                            {currentRisks.length > 0 && (
+                              <Button
+                                onClick={applyAllSuggestions}
+                                disabled={saving}
+                                variant="default"
+                                size="sm"
+                              >
+                                {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
+                                <CheckCheck className="mr-2 size-4" />
+                                {saving ? "Applying..." : "Apply All Suggestions"}
+                              </Button>
+                            )}
+                          </>
                         )}
                       </>
                     )}
@@ -807,9 +1238,234 @@ export default function DashboardPage() {
                 )}
               </CardContent>
             </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Input Form - Hidden when questions are pending or contract is generated */}
+          {!loading && !currentDocument?.contractText && 
+           !(currentDocument?.status === "awaiting_info" && currentDocument?.pendingQuestions && currentDocument.pendingQuestions.length > 0) && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle>Create a New Contract</CardTitle>
+                  <CardDescription>
+                    Tell us what kind of contract you need, and we'll generate it for you
+                  </CardDescription>
+                </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="title" className="text-sm font-medium">
+                    Contract Title
+                  </label>
+                  <input
+                    id="title"
+                    type="text"
+                    className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    placeholder="e.g., Freelance Service Agreement"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="description" className="text-sm font-medium">
+                    Contract Description
+                  </label>
+                  <textarea
+                    id="description"
+                    className="min-h-32 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    placeholder="Describe your contract in plain language... For example: A service agreement between a freelance developer and a startup for 3 months of work, $5000/month, with IP rights assigned to the client after full payment."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                {error && (
+                  <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+                    {error}
+                  </div>
+                )}
+                <Button
+                  onClick={handleGenerate}
+                  disabled={loading || !description.trim()}
+                  size="lg"
+                  loading={loading}
+                >
+                  {loading ? "Generating Contract..." : "Generate Contract"}
+                </Button>
+              </CardContent>
+            </Card>
+            </motion.div>
           )}
-        </div>
+
+          {/* Pending Questions - Show when awaiting info */}
+          {currentDocument?.status === "awaiting_info" && currentDocument?.pendingQuestions && currentDocument.pendingQuestions.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Card className="border-blue-500">
+                <CardHeader>
+                  {/* Context: What contract they're creating */}
+                  <div className="mb-3 rounded-md bg-blue-50 border border-blue-200 px-3 py-2">
+                    <p className="text-xs font-medium text-blue-900">
+                    Creating: {currentDocument.title || "Untitled Contract"}
+                  </p>
+                  {currentDocument.description && (
+                    <p className="text-xs text-blue-700 mt-1 line-clamp-2">
+                      {currentDocument.description}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <CardTitle className="flex items-center gap-2">
+                      <Sparkles className="size-5 text-blue-500" />
+                      Additional Information Needed
+                    </CardTitle>
+                    <CardDescription>
+                      Question {currentQuestionIndex + 1} of {currentDocument.pendingQuestions.length}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <div className="flex gap-1">
+                      {currentDocument.pendingQuestions.map((_, idx) => (
+                        <div
+                          key={idx}
+                          className={`h-2 w-2 rounded-full transition-colors ${
+                            idx === currentQuestionIndex
+                              ? "bg-blue-500"
+                              : questionAnswers[currentDocument.pendingQuestions![idx]]?.trim()
+                              ? "bg-green-500"
+                              : "bg-gray-300"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Current Question */}
+                  <div className="space-y-3">
+                    <label 
+                      htmlFor="current-question"
+                      className="block text-base font-medium"
+                    >
+                      {currentDocument.pendingQuestions[currentQuestionIndex]}
+                    </label>
+                    <textarea
+                      id="current-question"
+                      className="min-h-32 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      placeholder="Enter your answer..."
+                      value={questionAnswers[currentDocument.pendingQuestions[currentQuestionIndex]] || ""}
+                      onChange={(e) => setQuestionAnswers(prev => ({
+                        ...prev,
+                        [currentDocument.pendingQuestions![currentQuestionIndex]]: e.target.value
+                      }))}
+                      onKeyDown={(e) => {
+                        // Ctrl/Cmd + Enter to go to next question or submit
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                          e.preventDefault();
+                          if (currentQuestionIndex < currentDocument.pendingQuestions!.length - 1) {
+                            setCurrentQuestionIndex(prev => prev + 1);
+                            setError("");
+                          } else {
+                            handleSubmitAnswers();
+                          }
+                        }
+                      }}
+                      disabled={loading}
+                      autoFocus
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Press <kbd className="px-1.5 py-0.5 text-xs font-semibold bg-muted rounded">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 text-xs font-semibold bg-muted rounded">Enter</kbd> to proceed
+                    </p>
+                  </div>
+
+                  {error && (
+                    <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+                      {error}
+                    </div>
+                  )}
+
+                  {/* Navigation Buttons */}
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    {/* Left Side - Back Button */}
+                    <Button
+                      onClick={() => {
+                        setCurrentQuestionIndex(prev => Math.max(0, prev - 1));
+                        setError("");
+                      }}
+                      disabled={loading || currentQuestionIndex === 0}
+                      variant="outline"
+                      size="lg"
+                    >
+                      <ChevronLeft className="mr-1 size-4" />
+                      Back
+                    </Button>
+
+                    {/* Center - Skip All Button */}
+                    <Button
+                      onClick={handleSkipQuestions}
+                      disabled={loading}
+                      size="lg"
+                      variant="outline"
+                      className="text-muted-foreground"
+                    >
+                      <SkipForward className="mr-2 size-4" />
+                      Skip All
+                    </Button>
+
+                    {/* Right Side - Next/Submit Button */}
+                    {currentQuestionIndex < currentDocument.pendingQuestions.length - 1 ? (
+                      <Button
+                        onClick={() => {
+                          setCurrentQuestionIndex(prev => Math.min(currentDocument.pendingQuestions!.length - 1, prev + 1));
+                          setError("");
+                        }}
+                        disabled={loading}
+                        size="lg"
+                      >
+                        Next
+                        <ChevronRight className="ml-1 size-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleSubmitAnswers}
+                        disabled={loading}
+                        size="lg"
+                      >
+                        {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+                        {loading ? "Generating..." : "Submit & Generate"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            </motion.div>
+          )}
+        </motion.div>
       </div>
+
+      {/* Suggestion Modal */}
+      <SuggestionModal
+        isOpen={suggestionModal.isOpen}
+        onClose={closeSuggestionModal}
+        onSubmit={handleSuggestionSubmit}
+        question={suggestionModal.question}
+        riskLevel={suggestionModal.riskLevel}
+        isLoading={saving}
+        isLoadingQuestion={suggestionModal.isLoadingQuestion}
+      />
     </main>
   );
 }

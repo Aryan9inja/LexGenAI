@@ -101,7 +101,7 @@ export const api = {
         body: JSON.stringify({ title, plainTextDescription }),
       }),
 
-    generate: (documentId: string) =>
+    generate: (documentId: string, forceGenerate: boolean = false) =>
       fetchAPI<{
         message: string;
         document: {
@@ -112,7 +112,7 @@ export const api = {
         };
       }>("/documents/generate", {
         method: "POST",
-        body: JSON.stringify({ documentId }),
+        body: JSON.stringify({ documentId, forceGenerate }),
       }),
 
     analyzeRisk: (documentId: string) =>
@@ -163,6 +163,86 @@ export const api = {
       }>(`/documents/${documentId}`, {
         method: "PUT",
         body: JSON.stringify({ contractText }),
+      }),
+
+    getQuestions: (documentId: string) =>
+      fetchAPI<{
+        pendingQuestions: string[];
+        conversationHistory: Array<{
+          question: string;
+          answer?: string;
+          timestamp: string;
+        }>;
+        status: string;
+      }>(`/documents/${documentId}/questions`),
+
+    answerQuestions: (documentId: string, answers: Array<{ question: string; answer: string }>) =>
+      fetchAPI<{
+        message: string;
+        document: {
+          _id: string;
+          title: string;
+          description: string;
+          contractText?: string;
+          status: string;
+          pendingQuestions: string[];
+          conversationHistory: Array<{
+            question: string;
+            answer?: string;
+            timestamp: string;
+          }>;
+        };
+      }>("/documents/answer-questions", {
+        method: "POST",
+        body: JSON.stringify({ documentId, answers }),
+      }),
+
+    applySuggestion: (documentId: string, riskIndex: number, additionalContext?: string) =>
+      fetchAPI<{
+        message: string;
+        document: {
+          _id: string;
+          title: string;
+          contractText?: string;
+          riskAnalysis?: Array<{
+            text: string;
+            riskLevel: "high" | "medium" | "low";
+            explanation: string;
+            suggestion: string;
+          }>;
+          status: string;
+        };
+      }>("/documents/apply-suggestion", {
+        method: "POST",
+        body: JSON.stringify({ documentId, riskIndex, additionalContext }),
+      }),
+
+    getSuggestionQuestion: (documentId: string, riskIndex: number) =>
+      fetchAPI<{
+        question: string;
+      }>("/documents/suggestion-question", {
+        method: "POST",
+        body: JSON.stringify({ documentId, riskIndex }),
+      }),
+
+    applyAllSuggestions: (documentId: string) =>
+      fetchAPI<{
+        message: string;
+        document: {
+          _id: string;
+          title: string;
+          contractText?: string;
+          riskAnalysis?: Array<{
+            text: string;
+            riskLevel: "high" | "medium" | "low";
+            explanation: string;
+            suggestion: string;
+          }>;
+          status: string;
+        };
+      }>("/documents/apply-all-suggestions", {
+        method: "POST",
+        body: JSON.stringify({ documentId }),
       }),
   },
 };

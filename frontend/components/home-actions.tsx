@@ -1,42 +1,78 @@
 "use client";
 
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { buttonVariants } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/lib/auth-context";
-import { Loader2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 export function HomeActions() {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="flex gap-3">
+      <motion.div
+        className="flex gap-3"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
         <div className={buttonVariants({ size: "lg" })}>
-          <Loader2 className="mr-2 size-4 animate-spin" />
+          <Spinner size="sm" className="mr-2" />
           Loading...
         </div>
-      </div>
+      </motion.div>
     );
   }
 
   if (user) {
     return (
-      <div className="flex flex-wrap gap-3">
-        <Link href="/dashboard" className={buttonVariants({ size: "lg" })}>
-          Go to Dashboard
+      <motion.div
+        className="flex flex-wrap gap-3"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <Link href="/dashboard">
+          <motion.span
+            className={buttonVariants({ size: "lg" })}
+            whileHover={{ scale: 1.02, x: 4 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            Go to Dashboard
+            <ArrowRight className="ml-2 size-4" />
+          </motion.span>
         </Link>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="flex flex-wrap gap-3">
-      <Link href="/signup" className={buttonVariants({ size: "lg" })}>
-        Start Generating
+    <motion.div
+      className="flex flex-wrap gap-3"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <Link href="/signup">
+        <motion.span
+          className={buttonVariants({ size: "lg" })}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          Start Generating
+          <ArrowRight className="ml-2 size-4" />
+        </motion.span>
       </Link>
-      <Link href="/login" className={buttonVariants({ size: "lg", variant: "outline" })}>
-        Sign In
+      <Link href="/login">
+        <motion.span
+          className={buttonVariants({ size: "lg", variant: "outline" })}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          Sign In
+        </motion.span>
       </Link>
-    </div>
+    </motion.div>
   );
 }

@@ -1,7 +1,7 @@
 import { Schema, model, type HydratedDocument } from "mongoose";
 
 type RiskLevel = "high" | "medium" | "low";
-type DocStatus = "processing" | "generated" | "analyzed";
+type DocStatus = "processing" | "awaiting_info" | "generated" | "analyzed";
 
 interface IRiskClause {
   text: string;
@@ -10,14 +10,22 @@ interface IRiskClause {
   suggestion: string;
 }
 
+interface IQuestionAnswer {
+  question: string;
+  answer?: string;
+  timestamp: Date;
+}
+
 export interface IDocument {
   userId: string;
   title: string;
-  description: string; // <-- add this
+  description: string;
   contractText?: string;
   riskFlags: string[];
   status: DocStatus;
   riskAnalysis: IRiskClause[];
+  conversationHistory: IQuestionAnswer[];
+  pendingQuestions: string[];
 }
 
 export type DocumentDoc = HydratedDocument<IDocument>;
@@ -32,19 +40,30 @@ const riskClauseSchema = new Schema<IRiskClause>(
   { _id: false }
 );
 
+const questionAnswerSchema = new Schema<IQuestionAnswer>(
+  {
+    question: { type: String, required: true },
+    answer: { type: String },
+    timestamp: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const documentSchema = new Schema<IDocument>(
   {
     userId: { type: String, required: true },
     title: { type: String, required: true },
-    description: { type: String, required: true }, // <-- add this
+    description: { type: String, required: true },
     contractText: { type: String },
     riskFlags: { type: [String], default: [] },
     status: {
       type: String,
-      enum: ["processing", "generated", "analyzed"],
+      enum: ["processing", "awaiting_info", "generated", "analyzed"],
       default: "processing",
     },
     riskAnalysis: { type: [riskClauseSchema], default: [] },
+    conversationHistory: { type: [questionAnswerSchema], default: [] },
+    pendingQuestions: { type: [String], default: [] },
   },
   { timestamps: true }
 );

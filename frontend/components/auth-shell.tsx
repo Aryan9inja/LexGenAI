@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useState, FormEvent } from "react";
 
@@ -10,15 +11,32 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/components/ui/toast";
 
 type AuthShellProps = {
   mode: "login" | "signup";
+};
+
+const formVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0 },
 };
 
 export function AuthShell({ mode }: AuthShellProps) {
   const isLogin = mode === "login";
   const router = useRouter();
   const { login, register } = useAuth();
+  const { success, error: showError } = useToast();
   
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -33,11 +51,13 @@ export function AuthShell({ mode }: AuthShellProps) {
 
     if (!isLogin && password !== confirmPassword) {
       setError("Passwords do not match");
+      showError("Passwords do not match");
       return;
     }
 
     if (!isLogin && password.length < 8) {
       setError("Password must be at least 8 characters");
+      showError("Password must be at least 8 characters");
       return;
     }
 
@@ -46,12 +66,16 @@ export function AuthShell({ mode }: AuthShellProps) {
     try {
       if (isLogin) {
         await login(email, password);
+        success("Welcome back!");
       } else {
         await register(name, email, password);
+        success("Account created successfully!");
       }
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const message = err instanceof Error ? err.message : "An error occurred";
+      setError(message);
+      showError(message);
     } finally {
       setLoading(false);
     }
@@ -60,14 +84,25 @@ export function AuthShell({ mode }: AuthShellProps) {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <section className="mx-auto grid w-full max-w-7xl gap-8 px-6 py-10 lg:grid-cols-2 lg:items-center lg:px-10">
-        <div className="order-2 lg:order-1">
+        <motion.div
+          className="order-2 lg:order-1"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+        >
           <Card>
             <CardHeader className="space-y-4">
               <Link
                 href="/"
-                className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground group"
               >
-                <ArrowLeft className="size-4" />
+                <motion.span
+                  className="inline-flex"
+                  whileHover={{ x: -4 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                >
+                  <ArrowLeft className="size-4" />
+                </motion.span>
                 Back to home
               </Link>
 
@@ -88,15 +123,26 @@ export function AuthShell({ mode }: AuthShellProps) {
             </CardHeader>
 
             <CardContent>
-              <form className="space-y-4" onSubmit={handleSubmit}>
+              <motion.form
+                className="space-y-4"
+                onSubmit={handleSubmit}
+                variants={formVariants}
+                initial="hidden"
+                animate="visible"
+              >
                 {error && (
-                  <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-800">
+                  <motion.div
+                    className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-800"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
                     {error}
-                  </div>
+                  </motion.div>
                 )}
 
                 {!isLogin && (
-                  <div className="space-y-2">
+                  <motion.div className="space-y-2" variants={itemVariants}>
                     <label htmlFor="name" className="text-sm font-medium">
                       Full name
                     </label>
@@ -109,12 +155,12 @@ export function AuthShell({ mode }: AuthShellProps) {
                       onChange={(e) => setName(e.target.value)}
                       required={!isLogin}
                       disabled={loading}
-                      className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-foreground focus:ring-2 focus:ring-foreground/10 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
-                  </div>
+                  </motion.div>
                 )}
 
-                <div className="space-y-2">
+                <motion.div className="space-y-2" variants={itemVariants}>
                   <label htmlFor="email" className="text-sm font-medium">
                     Email
                   </label>
@@ -127,11 +173,11 @@ export function AuthShell({ mode }: AuthShellProps) {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     disabled={loading}
-                    className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-foreground focus:ring-2 focus:ring-foreground/10 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                </div>
+                </motion.div>
 
-                <div className="space-y-2">
+                <motion.div className="space-y-2" variants={itemVariants}>
                   <label htmlFor="password" className="text-sm font-medium">
                     Password
                   </label>
@@ -144,12 +190,12 @@ export function AuthShell({ mode }: AuthShellProps) {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={loading}
-                    className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-foreground focus:ring-2 focus:ring-foreground/10 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                </div>
+                </motion.div>
 
                 {!isLogin && (
-                  <div className="space-y-2">
+                  <motion.div className="space-y-2" variants={itemVariants}>
                     <label htmlFor="confirmPassword" className="text-sm font-medium">
                       Confirm password
                     </label>
@@ -162,29 +208,35 @@ export function AuthShell({ mode }: AuthShellProps) {
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       required={!isLogin}
                       disabled={loading}
-                      className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="h-11 w-full rounded-lg border border-border bg-background px-4 text-sm outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-foreground focus:ring-2 focus:ring-foreground/10 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
-                  </div>
+                  </motion.div>
                 )}
 
-                <Button type="submit" size="lg" className="w-full" disabled={loading}>
-                  {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
-                  {isLogin ? "Sign In" : "Create Account"}
-                </Button>
-              </form>
+                <motion.div variants={itemVariants}>
+                  <Button type="submit" size="lg" className="w-full" loading={loading}>
+                    {isLogin ? "Sign In" : "Create Account"}
+                  </Button>
+                </motion.div>
+              </motion.form>
 
-              <div className="mt-4 text-center text-sm text-muted-foreground">
-                {isLogin ? "Don’t have an account?" : "Already have an account?"} {" "}
+              <motion.div
+                className="mt-4 text-center text-sm text-muted-foreground"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+              >
+                {isLogin ? "Don't have an account?" : "Already have an account?"} {" "}
                 <Link
                   href={isLogin ? "/signup" : "/login"}
                   className="font-medium text-foreground underline-offset-4 hover:underline"
                 >
                   {isLogin ? "Sign up" : "Sign in"}
                 </Link>
-              </div>
+              </motion.div>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
 
         <div className="order-1 lg:order-2">
           <SplineScene />
