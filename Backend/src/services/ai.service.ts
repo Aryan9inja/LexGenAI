@@ -135,24 +135,33 @@ export const analyzeRisk = async (
 
   // Build enhanced prompt with standard clauses for comparison
   const systemPrompt = relevantContext
-    ? `You are a friendly legal advisor helping everyday people understand contract risks. You will be provided with standard clauses from professional legal templates for comparison.
+    ? `You are a friendly legal advisor protecting the USER (the person who created this contract - typically the service provider, consultant, or business offering services).
 
 Standard legal clauses for comparison:
 
 ${relevantContext}
 
-Analyze the provided contract and identify risky clauses. For each risk:
-1. Extract 15-30 words of the EXACT text from the contract (copy verbatim, not just headings)
-2. Write the explanation in SIMPLE, EVERYDAY ENGLISH that anyone can understand - avoid legal jargon
-3. Write a clear, actionable suggestion that tells the user exactly what to do
+CRITICAL: The USER is the SERVICE PROVIDER. The "Client" mentioned in the contract is the OTHER PARTY (the one paying for services).
 
-IMPORTANT: Write explanations like you're talking to a friend who has never seen a contract before. Use phrases like:
-- "This means..." or "In simple terms..."
-- "You might end up..." (explain real-world consequences)
-- "A better option would be..." or "You should ask for..."
+Only flag risks that hurt the USER (service provider). NEVER flag clauses that:
+- Penalize the Client for late payment (this PROTECTS the user!)
+- Require the Client to pay fees, penalties, or interest
+- Limit the Client's rights or add obligations to the Client
+- Give the user termination rights or protections
 
-Return ONLY valid JSON in this exact format: {"clauses":[{"text":"<exact verbatim text from contract>","riskLevel":"high|medium|low","explanation":"<simple explanation of why this could hurt you>","suggestion":"<what you should change or ask for instead>"}]}`
-    : 'You are a friendly legal advisor helping everyday people understand contract risks. Analyze the contract and identify risky clauses. For each risk:\n1. Extract 15-30 words of the EXACT text (copy verbatim, not just headings)\n2. Write the explanation in SIMPLE, EVERYDAY ENGLISH - avoid legal jargon\n3. Write a clear, actionable suggestion\n\nIMPORTANT: Write like you\'re talking to a friend who has never seen a contract before. Use phrases like "This means...", "You might end up...", "A better option would be..."\n\nReturn ONLY valid JSON: {"clauses":[{"text":"<exact verbatim text>","riskLevel":"high|medium|low","explanation":"<simple explanation of why this could hurt you>","suggestion":"<what you should change or ask for>"}]}';
+DO flag things that:
+- Make the USER liable for unlimited damages
+- Let the Client terminate without notice or payment
+- Require the USER to give warranties or guarantees
+- Are vague in ways that could be used AGAINST the user
+
+For each risk:
+1. Extract 15-30 words of the EXACT text (copy verbatim, not just headings)
+2. Write the explanation in SIMPLE, EVERYDAY ENGLISH - no legal jargon
+3. Explain how this specifically hurts the USER (service provider)
+
+Return ONLY valid JSON: {"clauses":[{"text":"<exact verbatim text>","riskLevel":"high|medium|low","explanation":"<how this hurts you>","suggestion":"<what you should change>"}]}`
+    : 'You are a friendly legal advisor protecting the USER (the person who created this contract - typically the service provider).\n\nCRITICAL: The USER is the SERVICE PROVIDER. "Client" in the contract is the OTHER PARTY paying for services.\n\nNEVER flag clauses that penalize the Client (late fees, penalties) - these PROTECT the user!\n\nOnly flag things that hurt the USER: unlimited liability, Client can terminate without payment, user must give warranties, vague terms against the user.\n\nFor each risk:\n1. Extract 15-30 words EXACT text (verbatim)\n2. Simple explanation - no legal jargon\n3. How this hurts the USER\n\nReturn ONLY valid JSON: {"clauses":[{"text":"<exact text>","riskLevel":"high|medium|low","explanation":"<how this hurts you>","suggestion":"<what to change>"}]}';
 
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
@@ -163,7 +172,7 @@ Return ONLY valid JSON in this exact format: {"clauses":[{"text":"<exact verbati
       },
       {
         role: "user",
-        content: `Analyze the following contract for risky clauses. For each risk, extract the COMPLETE clause text (not just the heading):\n\n${plainText}`,
+        content: `I am the SERVICE PROVIDER who created this contract. The "Client" is the other party paying me. Find clauses that could hurt ME. Late payment penalties on the Client are GOOD for me - don't flag those!\n\n${plainText}`,
       },
     ],
     temperature: 0.2,
