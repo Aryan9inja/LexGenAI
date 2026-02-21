@@ -7,7 +7,7 @@ import documentRouter from "./routes/document.routes";
 const app = express();
 
 // CORS configuration
-const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map(o => o.trim()) || ["https://fugallabs.com"];
+const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map(o => o.trim()) || ["http://localhost:3000"];
 console.log("Allowed CORS origins:", allowedOrigins);
 
 app.use(
