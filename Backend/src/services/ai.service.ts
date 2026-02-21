@@ -567,3 +567,59 @@ Please provide the full updated contract with all risky clauses replaced by impr
   logger.info("applyAllSuggestions", `All ${risks.length} suggestions applied successfully`);
   return updatedContract;
 };
+
+export type DescriptionValidation = {
+  isRelevant: boolean;
+  reason: string;
+};
+
+export const validateDescriptionRelevance = async (
+  description: string,
+): Promise<DescriptionValidation> => {
+  logger.debug("validateDescriptionRelevance", "Checking if description is related to legal/contract domain");
+
+  const client = await getOpenAIClient();
+
+  const response = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `You are a classifier. Determine if the user's text is a reasonable description for generating a legal contract, agreement, or legal document.
+
+Accept descriptions that:
+- Describe any kind of contract, agreement, MOU, NDA, lease, employment terms, freelance work, partnership, etc.
+- Are written informally but clearly relate to a legal arrangement between parties
+- May be brief but still convey a contractual intent
+
+Reject descriptions that:
+- Are random characters, keyboard mashing, or gibberish (e.g. "asdfghjkl", "xyz123")
+- Are completely unrelated to legal matters (e.g. "the weather is nice", "how to cook pasta", "tell me a joke")
+- Are nonsensical or meaningless text
+
+Return ONLY valid JSON:
+{
+  "isRelevant": true/false,
+  "reason": "Brief explanation of why this was accepted or rejected"
+}`,
+      },
+      {
+        role: "user",
+        content: description,
+      },
+    ],
+    temperature: 0.1,
+    response_format: { type: "json_object" },
+  });
+
+  const content = response.choices[0]?.message?.content ?? '{"isRelevant":true,"reason":"Unable to classify"}';
+  logger.info("validateDescriptionRelevance", "Validation completed");
+
+  try {
+    const parsed = JSON.parse(content) as DescriptionValidation;
+    return parsed;
+  } catch {
+    logger.error("validateDescriptionRelevance", "Failed to parse validation JSON", { content });
+    return { isRelevant: true, reason: "Failed to parse validation" };
+  }
+};

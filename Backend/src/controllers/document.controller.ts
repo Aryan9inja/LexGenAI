@@ -31,6 +31,10 @@ export const create = async (req: Request, res: Response) => {
   } catch (err) {
     const error = err as Error;
     logger.error("document.create", error.message);
+    if (error.message.startsWith("INVALID_DESCRIPTION:")) {
+      const reason = error.message.replace("INVALID_DESCRIPTION: ", "");
+      return res.status(400).json({ message: reason });
+    }
     return res.status(500).json({ message: "Failed to create document" });
   }
 };

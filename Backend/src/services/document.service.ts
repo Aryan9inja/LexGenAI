@@ -4,6 +4,13 @@ import { logger } from "../utils/logger";
 
 export const createDocument = async (userId: string, title: string, plainTextDescription: string) => {
   logger.debug("createDocument", "Creating document", { userId });
+
+  // Validate that the description is related to legal/contract domain
+  const validation = await aiService.validateDescriptionRelevance(plainTextDescription);
+  if (!validation.isRelevant) {
+    throw new Error(`INVALID_DESCRIPTION: ${validation.reason}`);
+  }
+
   const doc = new Document({
     userId,
     title,
