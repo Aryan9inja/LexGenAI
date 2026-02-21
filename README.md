@@ -148,3 +148,27 @@ sudo systemctl restart nginx
 ## License
 
 MIT
+
+## Usage
+
+### Generating a Contract
+1. Register or log in via the frontend.
+2. Navigate to the dashboard and select 'Create New Document'.
+3. Describe your contract requirements in plain language.
+4. Click 'Generate Contract' to receive a structured legal draft.
+
+### Analyzing Risks
+1. After generating a contract, click 'Analyze Risks'.
+2. The platform will highlight risky or ambiguous clauses.
+3. Review flagged clauses and suggested safer alternatives.
+4. Apply suggestions individually or all at once.
+
+### Downloading PDF
+1. Once satisfied, click 'Download PDF' to export your contract.
+2. Save or share the document as needed.
+
+### Example User Flow
+- Create a consultancy agreement using a template.
+- Analyze risks and apply safer clauses.
+- Download the finalized contract for signing.
+
