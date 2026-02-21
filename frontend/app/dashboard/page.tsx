@@ -471,9 +471,142 @@ export default function DashboardPage() {
       removeTooltip();
     };
     
+    // Touch event handler for mobile devices
+    const handleTouchStart = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // If touching a MARK element with risk data, show tooltip
+      if (target.tagName === 'MARK' && target.hasAttribute('data-risk-index')) {
+        e.preventDefault(); // Prevent default to ensure tooltip shows
+        
+        // Remove any existing tooltip first
+        removeTooltip();
+        
+        const riskIndex = parseInt(target.getAttribute('data-risk-index') || '0', 10);
+        const risk = currentRisks[riskIndex];
+        
+        if (!risk) return;
+        
+        const level = risk.riskLevel;
+        const explanation = risk.explanation;
+        const suggestion = risk.suggestion;
+        
+        // Create tooltip immediately for touch (no delay)
+        const tooltip = document.createElement('div');
+        tooltip.id = 'risk-tooltip';
+        tooltip.className = 'risk-tooltip-container';
+        tooltip.style.cssText = `
+          position: fixed;
+          background: #1f2937;
+          color: white;
+          padding: 12px;
+          border-radius: 10px;
+          font-size: 13px;
+          line-height: 1.5;
+          max-width: min(320px, calc(100vw - 24px));
+          max-height: calc(100vh - 40px);
+          overflow-y: auto;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+          z-index: 9999;
+          pointer-events: auto;
+          opacity: 0;
+          transition: opacity 0.15s ease;
+        `;
+        
+        tooltip.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px;">
+            <span style="font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: ${
+              level === 'high' ? '#fca5a5' : level === 'medium' ? '#fb923c' : '#fde68a'
+            }; background: ${
+              level === 'high' ? 'rgba(239, 68, 68, 0.15)' : level === 'medium' ? 'rgba(251, 146, 60, 0.15)' : 'rgba(250, 204, 21, 0.15)'
+            }; padding: 4px 8px; border-radius: 4px;">
+              ${level} Risk
+            </span>
+            <button
+              id="apply-suggestion-btn-touch-${riskIndex}"
+              style="
+                padding: 8px 14px;
+                background: #3b82f6;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.15s;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                white-space: nowrap;
+              "
+            >
+              ✓ Fix This
+            </button>
+          </div>
+          <div style="margin-bottom: 8px;">
+            <div style="font-weight: 500; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #9ca3af;">Why risky</div>
+            <div style="font-size: 12px; color: #e5e7eb;">${explanation}</div>
+          </div>
+          <div>
+            <div style="font-weight: 500; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #9ca3af;">Suggestion</div>
+            <div style="font-size: 12px; color: #e5e7eb;">${suggestion}</div>
+          </div>
+        `;
+        
+        document.body.appendChild(tooltip);
+        
+        // Add click handler for the apply button
+        const applyBtn = document.getElementById(`apply-suggestion-btn-touch-${riskIndex}`);
+        if (applyBtn) {
+          applyBtn.addEventListener('click', () => {
+            openSuggestionModal(riskIndex);
+            removeTooltip();
+          });
+        }
+        
+        // Position tooltip for mobile - center horizontally, position near touch point
+        const touch = e.touches[0];
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        const margin = 12;
+        
+        // Center horizontally on mobile
+        let left = (viewportWidth - tooltipRect.width) / 2;
+        left = Math.max(margin, Math.min(left, viewportWidth - tooltipRect.width - margin));
+        
+        // Position above or below touch point
+        let top: number;
+        const touchY = touch.clientY;
+        
+        if (touchY > viewportHeight / 2) {
+          // Touch is in bottom half, show tooltip above
+          top = Math.max(margin, touchY - tooltipRect.height - 20);
+        } else {
+          // Touch is in top half, show tooltip below
+          top = Math.min(viewportHeight - tooltipRect.height - margin, touchY + 30);
+        }
+        
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+        
+        // Fade in
+        requestAnimationFrame(() => {
+          tooltip.style.opacity = '1';
+        });
+      } else {
+        // Tapping outside of a MARK element - check if we should dismiss tooltip
+        const tooltip = document.getElementById('risk-tooltip');
+        if (tooltip && !tooltip.contains(target)) {
+          removeTooltip();
+        }
+      }
+    };
+    
     document.addEventListener('mouseover', handleMouseOver);
     document.addEventListener('mouseout', handleMouseOut);
     document.addEventListener('scroll', handleScroll, true);
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
     
     // Check for tooltip mouse leave periodically
     const tooltipCheckInterval = setInterval(() => {
@@ -489,6 +622,7 @@ export default function DashboardPage() {
       document.removeEventListener('mouseover', handleMouseOver);
       document.removeEventListener('mouseout', handleMouseOut);
       document.removeEventListener('scroll', handleScroll, true);
+      document.removeEventListener('touchstart', handleTouchStart);
     };
   }, [currentRisks, openSuggestionModal]);
 
