@@ -208,39 +208,36 @@ export async function isIndexReady(): Promise<boolean> {
       return false;
     }
 
-    // Try a test vector search with a dummy embedding
-    const testEmbedding = new Array(1536).fill(0);
-    testEmbedding[0] = 1; // Make it non-zero
+    // ✅ Check index existence and status directly via Atlas Search metadata
+    // This avoids false negatives from dummy vector searches (a near-zero vector
+    // can legitimately return 0 results even when the index is perfectly healthy)
+    const collection = mongoose.connection.db!.collection("templatechunks");
+    const indexes: any[] = await (collection as any).listSearchIndexes().toArray();
+    const vectorIndex = indexes.find((idx: any) => idx.name === VECTOR_INDEX_NAME);
 
-    const results = await TemplateChunk.aggregate([
-      {
-        $vectorSearch: {
-          index: VECTOR_INDEX_NAME,
-          path: "embedding",
-          queryVector: testEmbedding,
-          numCandidates: 10,
-          limit: 1,
-        },
-      },
-    ]);
-
-    // MongoDB Atlas returns empty array if index doesn't exist (no error thrown)
-    if (results.length === 0) {
+    if (!vectorIndex) {
       logger.warn(
         "VectorStore",
-        `❌ Vector search index '${VECTOR_INDEX_NAME}' does NOT exist or is not ready`
+        `❌ Vector search index '${VECTOR_INDEX_NAME}' does NOT exist`
       );
-      logger.warn("VectorStore", "You have chunks but no search results - INDEX IS MISSING");
       logger.warn("VectorStore", `Create the index in MongoDB Atlas: Database='Enigma2026', Collection='templatechunks'`);
       return false;
     }
 
-    logger.info("VectorStore", "✓ Vector search index is ready and returning results");
+    if (vectorIndex.status !== "READY") {
+      logger.warn(
+        "VectorStore",
+        `⏳ Vector search index '${VECTOR_INDEX_NAME}' exists but is not ready yet (status: ${vectorIndex.status})`
+      );
+      return false;
+    }
+
+    logger.info("VectorStore", `✓ Vector search index '${VECTOR_INDEX_NAME}' is READY`);
     return true;
   } catch (error: any) {
     logger.warn(
       "VectorStore",
-      `Vector search index not ready: ${error.message}`
+      `Vector search index check failed: ${error.message}`
     );
     return false;
   }
