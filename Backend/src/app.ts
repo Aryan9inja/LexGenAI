@@ -6,22 +6,18 @@ import documentRouter from "./routes/document.routes";
 
 const app = express();
 
-// CORS configuration
-const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map(o => o.trim()) || ["https://fugallabs.com"];
-console.log("Allowed CORS origins:", allowedOrigins);
-
 app.use(
   cors({
     origin: (origin, callback) => {
-      console.log("Request from origin:", origin);
+      // Read lazily so dotenv has already been loaded by index.ts
+      const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map(o => o.trim()) || ["http://localhost:3000"];
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-      
+
       if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
         callback(null, true);
       } else {
-        console.log("CORS blocked origin:", origin, "Allowed:", allowedOrigins);
-        callback(new Error("Not allowed by CORS"));
+        callback(new Error(`CORS blocked: ${origin} not in [${allowedOrigins.join(", ")}]`));
       }
     },
     credentials: true,

@@ -8,6 +8,9 @@ import {logger} from "./utils/logger";
 // Load .env from Backend directory (parent of src)
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
+const allowedOrigins = process.env.CORS_ORIGIN?.split(",").map(o => o.trim()) || ["http://localhost:3000"];
+logger.info("Server", `CORS allowed origins: [${allowedOrigins.join(", ")}]`);
+
 async function main() {
   try {
     console.log("Starting server...");
