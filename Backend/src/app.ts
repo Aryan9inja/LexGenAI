@@ -6,6 +6,10 @@ import documentRouter from "./routes/document.routes";
 
 const app = express();
 
+// Trust the first proxy (Railway, Render, Heroku, etc.) so that
+// secure cookies and req.ip work correctly behind a reverse proxy
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: (origin, callback) => {
