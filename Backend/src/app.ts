@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth.routes";
 import documentRouter from "./routes/document.routes";
+import { apiLimiter } from "./middlewares/rate-limit.middleware";
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.get("/health", (_req, res) => {
   res.status(200).json({ status: "OK" });
 });
 
+app.use("/api", apiLimiter);
 app.use("/api/auth", authRouter);
 app.use("/api/documents", documentRouter);
 
