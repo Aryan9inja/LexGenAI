@@ -35,7 +35,7 @@ export const create = async (req: Request, res: Response) => {
       const reason = error.message.replace("INVALID_DESCRIPTION: ", "");
       return res.status(400).json({ message: reason });
     }
-    return res.status(500).json({ message: "Failed to create document" });
+    return res.status(500).json({ message: "OPEN AI API credits vanished" });
   }
 };
 
