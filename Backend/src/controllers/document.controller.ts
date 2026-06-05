@@ -57,7 +57,7 @@ export const generate = async (req: Request, res: Response) => {
     if (error.message === "Document not found") {
       return res.status(404).json({ message: error.message });
     }
-    return res.status(500).json({ message: "Failed to generate contract" });
+    return res.status(500).json({ message: "Open AI API credits vanished" });
   }
 };
 
