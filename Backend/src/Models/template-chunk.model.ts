@@ -7,7 +7,7 @@ export interface ITemplateChunk extends Document {
   category: string; // nda, offer-letters, service-provider-agreements, consultancy-agreements
   sectionTitle: string;
   content: string;
-  embedding: number[]; // OpenAI embedding vector (1536 dimensions for text-embedding-3-small)
+  embedding: number[]; // Gemini embedding vector (1536 dimensions for Atlas vector search)
   metadata: {
     filePath: string;
     chunkIndex: number;

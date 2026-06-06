@@ -1,25 +1,47 @@
 import OpenAI from "openai";
 import {logger} from "../utils/logger.js";
 
-// Initialize OpenAI client
-let openai: OpenAI | null = null;
+// Initialize Gemini through the OpenAI-compatible API.
+let geminiClient: OpenAI | null = null;
 
-function getOpenAIClient(): OpenAI {
-  if (!openai) {
-    const apiKey = process.env.OPENAI_API_KEY;
+function getGeminiClient(): OpenAI {
+  if (!geminiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("OPENAI_API_KEY not found in environment variables");
+      throw new Error("GEMINI_API_KEY not found in environment variables");
     }
-    openai = new OpenAI({ apiKey });
+
+    // Old OpenAI setup:
+    // geminiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    geminiClient = new OpenAI({
+      apiKey,
+      baseURL:
+        process.env.GEMINI_BASE_URL ||
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+    });
   }
-  return openai;
+  return geminiClient;
 }
 
 // Configuration
-const EMBEDDING_MODEL =
-  process.env.EMBEDDING_MODEL || "text-embedding-3-small";
-const EMBEDDING_DIMENSIONS = 1536; // text-embedding-3-small supports 1536 dimensions
-const MAX_BATCH_SIZE = 100; // OpenAI allows up to 2048 inputs, but we'll be conservative
+const EMBEDDING_DIMENSIONS = 1536; // Keep Atlas vector index compatible.
+
+function getEmbeddingModel(): string {
+  return process.env.EMBEDDING_MODEL || "gemini-embedding-001";
+}
+
+function toPositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getEmbeddingBatchSize(): number {
+  return toPositiveInt(process.env.EMBEDDING_BATCH_SIZE, 10);
+}
+
+function getEmbeddingBatchDelayMs(): number {
+  return toPositiveInt(process.env.EMBEDDING_BATCH_DELAY_MS, 30000);
+}
 
 /**
  * Generate embedding for a single text
@@ -28,18 +50,19 @@ const MAX_BATCH_SIZE = 100; // OpenAI allows up to 2048 inputs, but we'll be con
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   try {
-    const client = getOpenAIClient();
+    const client = getGeminiClient();
 
     logger.debug("EmbeddingService", `Generating embedding for text (${text.length} chars)`);
 
     const response = await client.embeddings.create({
-      model: EMBEDDING_MODEL,
+      model: getEmbeddingModel(),
       input: text,
       encoding_format: "float",
+      dimensions: EMBEDDING_DIMENSIONS,
     });
 
     if (!response.data || response.data.length === 0) {
-      throw new Error("No embedding returned from OpenAI");
+      throw new Error("No embedding returned from Gemini");
     }
 
     const embedding = response.data[0].embedding;
@@ -62,8 +85,10 @@ export async function batchGenerateEmbeddings(
   texts: string[]
 ): Promise<number[][]> {
   try {
-    const client = getOpenAIClient();
+    const client = getGeminiClient();
     const embeddings: number[][] = [];
+    const maxBatchSize = getEmbeddingBatchSize();
+    const batchDelayMs = getEmbeddingBatchDelayMs();
 
     logger.info(
       "EmbeddingService",
@@ -71,10 +96,10 @@ export async function batchGenerateEmbeddings(
     );
 
     // Process in batches to respect API limits
-    for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {
-      const batch = texts.slice(i, i + MAX_BATCH_SIZE);
-      const batchNum = Math.floor(i / MAX_BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(texts.length / MAX_BATCH_SIZE);
+    for (let i = 0; i < texts.length; i += maxBatchSize) {
+      const batch = texts.slice(i, i + maxBatchSize);
+      const batchNum = Math.floor(i / maxBatchSize) + 1;
+      const totalBatches = Math.ceil(texts.length / maxBatchSize);
 
       logger.info(
         "EmbeddingService",
@@ -82,9 +107,10 @@ export async function batchGenerateEmbeddings(
       );
 
       const response = await client.embeddings.create({
-        model: EMBEDDING_MODEL,
+        model: getEmbeddingModel(),
         input: batch,
         encoding_format: "float",
+        dimensions: EMBEDDING_DIMENSIONS,
       });
 
       if (!response.data || response.data.length !== batch.length) {
@@ -97,9 +123,9 @@ export async function batchGenerateEmbeddings(
       const batchEmbeddings = response.data.map((item) => item.embedding);
       embeddings.push(...batchEmbeddings);
 
-      // Add small delay between batches to avoid rate limits
-      if (i + MAX_BATCH_SIZE < texts.length) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      // Add delay between batches to stay friendly to Gemini free-tier limits.
+      if (i + maxBatchSize < texts.length) {
+        await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
       }
     }
 
@@ -155,7 +181,7 @@ export function getEmbeddingConfig(): {
   dimensions: number;
 } {
   return {
-    model: EMBEDDING_MODEL,
+    model: getEmbeddingModel(),
     dimensions: EMBEDDING_DIMENSIONS,
   };
 }

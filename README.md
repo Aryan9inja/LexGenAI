@@ -15,7 +15,7 @@ An AI-powered legal contract generation and risk analysis platform. Generate leg
 ### Backend
 - Node.js + Express + TypeScript
 - MongoDB with Vector Search (Atlas)
-- OpenAI GPT-4o-mini
+- Gemini API via the OpenAI-compatible client
 - JWT authentication with HTTP-only cookies
 
 ### Frontend
@@ -49,19 +49,25 @@ Enigma2026/
 - Node.js 20+
 - pnpm
 - MongoDB Atlas account
-- OpenAI API key
+- Gemini API key from Google AI Studio
 
 ### Environment Variables
 
 **Backend (.env)**
 ```env
 PORT=5000
-MONGODB_URI=mongodb+srv://...
-OPENAI_API_KEY=sk-...
+MONGO_URI=mongodb+srv://...
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash
+EMBEDDING_MODEL=gemini-embedding-001
+EMBEDDING_BATCH_SIZE=10
+EMBEDDING_BATCH_DELAY_MS=30000
 JWT_SECRET=your-secret-key
 CORS_ORIGIN=http://localhost:3000
 TOP_K_RETRIEVAL=5
 ```
+
+This project originally used the OpenAI API while development credits were available. It now uses the Gemini API free tier through Gemini's OpenAI-compatible endpoint. `gemini-2.5-flash` is the stable default general-purpose model; `gemini-3-flash-preview` can be used via `GEMINI_MODEL` if you want the newer preview model. Embeddings use `gemini-embedding-001` and are generated on backend startup with conservative batching for free-tier reliability.
 
 **Frontend (.env.local)**
 ```env
@@ -171,4 +177,3 @@ MIT
 - Create a consultancy agreement using a template.
 - Analyze risks and apply safer clauses.
 - Download the finalized contract for signing.
-

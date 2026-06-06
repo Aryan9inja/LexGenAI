@@ -3,7 +3,11 @@ import { logger } from '../utils/logger';
 import { generateEmbedding } from './embedding.service.js';
 import { searchSimilarChunks } from './vector.service.js';
 
-let openai: OpenAI | null = null;
+let geminiClient: OpenAI | null = null;
+
+function getGeminiModel(): string {
+  return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+}
 
 // Helper function to strip markdown formatting from text
 function stripMarkdown(text: string): string {
@@ -18,15 +22,25 @@ function stripMarkdown(text: string): string {
     .replace(/`([^`]+)`/g, '$1');        // Remove inline code
 }
 
-async function getOpenAIClient() {
-  if (!openai) {
-    logger.debug("getOpenAIClient", "Initializing OpenAI client");
-    openai = new OpenAI({ 
-      apiKey: process.env.OPENAI_API_KEY 
+async function getGeminiClient(): Promise<OpenAI> {
+  if (!geminiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY not found in environment variables");
+    }
+
+    logger.debug("getGeminiClient", "Initializing Gemini OpenAI-compatible client");
+
+    // Old OpenAI setup:
+    // geminiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    geminiClient = new OpenAI({
+      apiKey,
+      baseURL:
+        process.env.GEMINI_BASE_URL ||
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
     });
-    logger.debug("openAiClientCreated",process.env.OPENAI_API_KEY!);
   }
-  return openai;
+  return geminiClient;
 }
 
 export type RiskClause = {
@@ -43,11 +57,11 @@ export type RiskAnalysis = {
 export const generateContract = async (
   description: string,
 ): Promise<string> => {
-  logger.debug("generateContract", "Calling OpenAI to generate contract", {
+  logger.debug("generateContract", "Calling Gemini to generate contract", {
     descriptionLength: description.length,
   });
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   // RAG Step 1: Generate embedding for the user's description
   let relevantContext = "";
@@ -106,7 +120,7 @@ CRITICAL FORMATTING RULES:
 Return only the contract text.`;
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",
@@ -130,12 +144,12 @@ Return only the contract text.`;
 export const analyzeRisk = async (
   contractText: string,
 ): Promise<RiskAnalysis> => {
-  logger.debug("analyzeRisk", "Calling OpenAI to analyze contract risk");
+  logger.debug("analyzeRisk", "Calling Gemini to analyze contract risk");
 
   // Strip HTML tags to get plain text for analysis
   const plainText = contractText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   // RAG Step 1: Retrieve relevant template sections for comparison
   let relevantContext = "";
@@ -197,7 +211,7 @@ Return ONLY valid JSON: {"clauses":[{"text":"<exact verbatim text>","riskLevel":
     : 'You are a friendly legal advisor protecting the USER (the person who created this contract - typically the service provider).\n\nCRITICAL: The USER is the SERVICE PROVIDER. "Client" in the contract is the OTHER PARTY paying for services.\n\nNEVER flag clauses that penalize the Client (late fees, penalties) - these PROTECT the user!\n\nOnly flag things that hurt the USER: unlimited liability, Client can terminate without payment, user must give warranties, vague terms against the user.\n\nFor each risk:\n1. Extract 15-30 words EXACT text (verbatim)\n2. Simple explanation - no legal jargon\n3. How this hurts the USER\n\nReturn ONLY valid JSON: {"clauses":[{"text":"<exact text>","riskLevel":"high|medium|low","explanation":"<how this hurts you>","suggestion":"<what to change>"}]}';
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",
@@ -238,7 +252,7 @@ export const analyzeInformationCompleteness = async (
 ): Promise<CompletenessAnalysis> => {
   logger.debug("analyzeInformationCompleteness", "Analyzing if information is sufficient for contract generation");
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   // Build context from conversation history
   let conversationContext = "";
@@ -280,7 +294,7 @@ Return ONLY valid JSON:
 }`;
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",
@@ -319,7 +333,7 @@ export const generateContractWithContext = async (
 ): Promise<string> => {
   logger.debug("generateContractWithContext", "Generating contract with conversation context");
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   // RAG Step 1: Generate embedding for the user's description
   let relevantContext = "";
@@ -381,7 +395,7 @@ CRITICAL FORMATTING RULES:
 Return only the contract text.`;
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",
@@ -416,10 +430,10 @@ export const generateSuggestionQuestion = async (
 ): Promise<string> => {
   logger.debug("generateSuggestionQuestion", "Generating follow-up question for suggestion");
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",
@@ -466,18 +480,18 @@ export const applySuggestion = async (
   suggestion: string,
   additionalContext?: string,
 ): Promise<string> => {
-  logger.debug("applySuggestion", "Calling OpenAI to apply risk suggestion", {
+  logger.debug("applySuggestion", "Calling Gemini to apply risk suggestion", {
     hasContext: !!additionalContext,
   });
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   const contextPrompt = additionalContext
     ? `\n\nAdditional Context/Details:\n${additionalContext}`
     : "";
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",
@@ -523,16 +537,16 @@ export const applyAllSuggestions = async (
   contractText: string,
   risks: RiskClause[],
 ): Promise<string> => {
-  logger.debug("applyAllSuggestions", `Calling OpenAI to apply ${risks.length} risk suggestions`);
+  logger.debug("applyAllSuggestions", `Calling Gemini to apply ${risks.length} risk suggestions`);
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   const risksText = risks.map((risk, idx) => 
     `${idx + 1}. Risky Clause: "${risk.text}"\n   Suggestion: ${risk.suggestion}\n   Risk Level: ${risk.riskLevel}`
   ).join("\n\n");
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",
@@ -578,10 +592,10 @@ export const validateDescriptionRelevance = async (
 ): Promise<DescriptionValidation> => {
   logger.debug("validateDescriptionRelevance", "Checking if description is related to legal/contract domain");
 
-  const client = await getOpenAIClient();
+  const client = await getGeminiClient();
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: getGeminiModel(),
     messages: [
       {
         role: "system",

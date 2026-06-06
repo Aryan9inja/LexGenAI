@@ -4,14 +4,16 @@ This guide will help you set up the MongoDB Atlas Vector Search index required f
 
 ## Prerequisites
 
-1. **MongoDB Atlas Account**: You need a MongoDB Atlas account (free tier M0 is sufficient for development)
+1. **MongoDB Atlas Account**: You need a MongoDB Atlas account
    - Sign up at: https://www.mongodb.com/cloud/atlas/register
    
-2. **MongoDB Atlas Cluster**: Create a cluster (M0 free tier or higher)
+2. **MongoDB Atlas Cluster**: Create an Atlas cluster
    - **Important**: Local MongoDB does NOT support vector search. You must use MongoDB Atlas.
-   - For production, use M10+ tier (M0 has limited vector search dimensions)
+   - The default Gemini embedding setup uses 1536 dimensions. If your Atlas tier limits vector dimensions below that, use a higher tier or lower `EMBEDDING_DIMENSIONS` in code and recreate the index with the same value.
 
 3. **Network Access**: Ensure your IP address is whitelisted in Atlas Network Access settings
+
+4. **Gemini API Key**: Create an API key in Google AI Studio and set `GEMINI_API_KEY` in `.env`
 
 ## Step 1: Update MongoDB Connection String
 
@@ -33,12 +35,12 @@ MONGO_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>?r
 When you start the server for the first time, it will:
 1. Load all 28 templates from the `templates/` directory
 2. Split them into sections (chunks)
-3. Generate embeddings using OpenAI
+3. Generate embeddings using Gemini
 4. Store chunks with embeddings in MongoDB
 
 ```bash
 cd Backend
-npm run dev
+pnpm dev
 ```
 
 You should see logs like:
@@ -199,16 +201,17 @@ curl -X POST http://localhost:5000/api/documents/analyze-risk \
 1. Check server logs on startup - should show "Indexed X chunks"
 2. Verify templates exist in the `templates/` directory
 3. Check MongoDB collection `templatechunks` has documents with `embedding` arrays
-4. Ensure `OPENAI_API_KEY` is valid in your `.env` file
+4. Ensure `GEMINI_API_KEY` is valid in your `.env` file
 
 ### "Embedding generation failed"
 
-**Cause**: OpenAI API issues or invalid API key.
+**Cause**: Gemini API issues, invalid API key, or free-tier rate limits.
 
 **Solutions**:
-1. Verify `OPENAI_API_KEY` in `.env` is correct and has credits
-2. Check OpenAI API status: https://status.openai.com/
-3. Review rate limits on your OpenAI account
+1. Verify `GEMINI_API_KEY` in `.env` is correct
+2. Check Gemini API status and quota in Google AI Studio
+3. Review free-tier rate limits for your selected Gemini model
+4. Lower `EMBEDDING_BATCH_SIZE` or raise `EMBEDDING_BATCH_DELAY_MS` if startup embedding hits rate limits
 
 ### "Vector search fails silently"
 
@@ -216,7 +219,7 @@ curl -X POST http://localhost:5000/api/documents/analyze-risk \
 
 **Solutions**:
 1. Delete the index and recreate it with exact settings above
-2. Ensure `numDimensions` is `1536` (matches text-embedding-3-small)
+2. Ensure `numDimensions` is `1536` (matches the configured Gemini embedding output)
 3. Ensure `similarity` is `cosine`
 4. Verify `path` is `embedding` (not `embeddings`)
 
@@ -224,15 +227,13 @@ curl -X POST http://localhost:5000/api/documents/analyze-risk \
 
 ### Why these settings?
 
-- **numDimensions: 1536**: This matches OpenAI's `text-embedding-3-small` model output
-  - If you change `EMBEDDING_MODEL` to a different model, update this accordingly
-  - `text-embedding-ada-002`: 1536 dimensions
-  - `text-embedding-3-small`: 1536 dimensions (default, 512 or 1536)
-  - `text-embedding-3-large`: 3072 dimensions (1024 or 3072)
+- **numDimensions: 1536**: This matches the configured Gemini embedding output
+  - Default model: `gemini-embedding-001`
+  - The backend requests 1536 dimensions to keep the existing Atlas vector index compatible
+  - If you change embedding dimensions, recreate the Atlas vector index with the same dimension count
 
-- **similarity: cosine**: Best for normalized embeddings (OpenAI embeddings are normalized)
+- **similarity: cosine**: Recommended for most text embedding similarity searches
   - Alternatives: `euclidean`, `dotProduct`
-  - Cosine is recommended for most use cases
 
 - **path: embedding**: Field name in your documents containing the vector
   - Must match the field in `TemplateChunk` model
@@ -271,23 +272,27 @@ This allows filtering by category during vector search.
 - **M10+**: Full vector search support, ~$0.08/hour (~$57/month)
 - **Shared clusters (M2/M5)**: May have limitations
 
-### OpenAI Embeddings
-- **text-embedding-3-small**: $0.00002 per 1K tokens (~$0.02 per 1M tokens)
-- **One-time indexing cost**: ~150 chunks × 200 tokens avg = 30K tokens = $0.0006 (negligible)
-- **Per-request cost**: 1 embedding per generation/analysis = ~$0.000004 each
+### Gemini API
+- **General-purpose model**: `gemini-2.5-flash` is the stable default free-tier choice
+- **Preview option**: `gemini-3-flash-preview` is available if you want the newer preview model
+- **Embedding model**: `gemini-embedding-001`
+- **Startup embeddings**: The backend uses conservative batching because embeddings are generated on startup and reliability matters more than speed
 
-**Total estimated cost**: ~$60/month for M10 Atlas cluster + negligible OpenAI embeddings
+**Total estimated cost**: MongoDB Atlas cost depends on your cluster tier. Gemini API calls can stay on the free tier for development, subject to current model rate limits.
 
 ## Environment Variables Reference
 
 ```env
 # Required for RAG
 MONGO_URI=mongodb+srv://...              # MongoDB Atlas connection string
-OPENAI_API_KEY=sk-...                    # OpenAI API key
+GEMINI_API_KEY=...                       # Gemini API key from Google AI Studio
 
 # Optional (defaults shown)
 VECTOR_INDEX_NAME=template_vector_index  # Name of the vector search index
-EMBEDDING_MODEL=text-embedding-3-small   # OpenAI embedding model
+GEMINI_MODEL=gemini-2.5-flash            # Stable Gemini free-tier chat model
+EMBEDDING_MODEL=gemini-embedding-001     # Gemini embedding model
+EMBEDDING_BATCH_SIZE=10                  # Startup embedding batch size
+EMBEDDING_BATCH_DELAY_MS=30000           # Delay between startup embedding batches
 TOP_K_RETRIEVAL=5                        # Number of similar chunks to retrieve
 DEBUG=false                              # Enable debug logging
 ```
@@ -297,7 +302,7 @@ DEBUG=false                              # Enable debug logging
 Once vector search is working:
 1. ✅ Experiment with `TOP_K_RETRIEVAL` values (3-10)
 2. ✅ Add more templates to improve RAG quality
-3. ✅ Monitor OpenAI usage and costs
+3. ✅ Monitor Gemini free-tier quota and rate limits
 4. ✅ Consider caching embeddings for frequently used queries
 5. ✅ Implement template versioning and re-indexing workflows
 
@@ -307,8 +312,8 @@ If you encounter issues:
 1. Check server logs for detailed error messages
 2. Verify all prerequisites are met
 3. Review MongoDB Atlas Search index status
-4. Test OpenAI API connectivity separately
+4. Test Gemini API connectivity separately
 5. Ensure firewall/network settings allow Atlas connections
 
 For MongoDB Atlas support: https://www.mongodb.com/docs/atlas/
-For OpenAI API support: https://platform.openai.com/docs
+For Gemini API support: https://ai.google.dev/gemini-api/docs
