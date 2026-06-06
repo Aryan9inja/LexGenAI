@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import path from "path";
 import app from "./app";
 import { connectDB } from "./db";
-import { initializeVectorStore } from "./initialize";
+import { initializeVectorStore, needsReindexing } from "./initialize";
 import {logger} from "./utils/logger";
 
 // Load .env from Backend directory (parent of src)
@@ -18,14 +18,27 @@ async function main() {
     // Connect to database
     await connectDB();
     
-    // Initialize vector store with templates
-    logger.info("Server", "Initializing RAG vector store...");
-    await initializeVectorStore();
-    
-    // Start server
-    app.listen(process.env.PORT || 5000, () => {
-      console.log("Server is running on port 5000");
+    // Start server immediately
+    const port = process.env.PORT || 5000;
+    app.listen(port, () => {
+      console.log(`Server is running on port ${port}`);
       logger.info("Server", "Server ready and accepting requests");
+
+      // Initialize vector store in the background
+      (async () => {
+        try {
+          const reindexingNeeded = await needsReindexing();
+          if (reindexingNeeded) {
+            logger.info("Server", "Initializing RAG vector store in background...");
+            await initializeVectorStore();
+            logger.info("Server", "RAG vector store initialization completed");
+          } else {
+            logger.info("Server", "RAG vector store already initialized, skipping background indexing");
+          }
+        } catch (error) {
+          logger.error("Server", "Background RAG initialization failed", error);
+        }
+      })();
     });
   } catch (error) {
     console.error("Error starting server:", error);
